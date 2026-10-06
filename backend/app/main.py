@@ -401,7 +401,7 @@ async def set_storage(body:StorageConfig):
     return storage_info()
 
 def storage_info():
-    usage={name:sum(p.stat().st_size for p in (s.DATA/name).rglob('*') if p.is_file()) for name in ('sources','previews','subtitles','assets','renders','work')}
+    usage={name:s.directory_bytes(s.DATA/name) for name in ('sources','previews','subtitles','assets','renders','work')}
     return {'used':s.used_bytes(),'free':shutil.disk_usage(s.DATA).free,'limit_gb':s.setting('storage_limit_gb',20),'categories':usage}
 
 @app.post('/api/settings/cleanup/{kind}')

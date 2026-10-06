@@ -85,6 +85,15 @@ def test_complete_workflow(footage,tmp_path):
         assert abs(clip['metadata']['duration']-4.5)<0.1
         assert (clip['metadata']['width'],clip['metadata']['height'])==(404,720)
         assert clip['metadata']['video_codec']=='h264' and clip['metadata']['audio'][0]['codec']=='aac'
+        # Decode actual rendered audio: both the source tone and music must remain audible.
+        from array import array
+        from math import sin,cos,pi,hypot
+        clip_path=s.one('SELECT path FROM clips WHERE id=?',(clip['id'],))['path']
+        pcm=subprocess.check_output(['ffmpeg','-v','error','-ss','1','-i',clip_path,'-t','0.25','-f','s16le','-ac','1','-ar','16000','pipe:1'])
+        samples=array('h',pcm)
+        def amplitude(freq):
+            return hypot(sum(v*cos(2*pi*freq*n/16000) for n,v in enumerate(samples)),sum(v*sin(2*pi*freq*n/16000) for n,v in enumerate(samples)))/len(samples)
+        assert amplitude(440)>300 and amplitude(880)>50
         assert client.get(f"/api/media/clip/{clip['id']}?download=true").headers['content-disposition'].startswith('attachment')
         assert client.get('/api/jobs').json()[0].get('payload') is None
         # Image watermark and fit mode exercise an independent filter graph.

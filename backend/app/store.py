@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from contextlib import contextmanager
 from cryptography.fernet import Fernet
 
 DATA = Path(os.getenv('DATA_DIR', '/data')).resolve()
@@ -21,12 +22,20 @@ if not key_path.exists():
 cipher = Fernet(key_path.read_bytes())
 lock = threading.RLock()
 
+@contextmanager
 def db():
     con = sqlite3.connect(DATA / 'videoedit.sqlite3', timeout=30)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA journal_mode=WAL')
     con.execute('PRAGMA foreign_keys=ON')
-    return con
+    try:
+        yield con
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 with db() as con:
     con.executescript('''
@@ -86,8 +95,18 @@ def update_job(ident, **values):
     assert all(k in {'status','progress','bytes','speed','started','finished','error','result_id','duration'} for k in values)
     execute('UPDATE jobs SET ' + ','.join(k+'=?' for k in values) + ' WHERE id=?', (*values.values(), ident))
 
+def directory_bytes(directory):
+    total=0
+    for path in Path(directory).rglob('*'):
+        try:
+            if path.is_file():
+                total+=path.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
+
 def used_bytes():
-    return sum(p.stat().st_size for p in DATA.rglob('*') if p.is_file())
+    return directory_bytes(DATA)
 
 def space_for(size=0):
     import shutil

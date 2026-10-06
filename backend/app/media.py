@@ -76,9 +76,13 @@ async def probe(path):
     def track(st):
         return {'index':st['index'], 'codec':st.get('codec_name','unknown'),
                 'language':st.get('tags',{}).get('language',''), 'title':st.get('tags',{}).get('title','')}
+    width,height=(video.get('width',0),video.get('height',0)) if video else (0,0)
+    rotation=next((item.get('rotation',0) for item in video.get('side_data_list',[]) if 'rotation' in item),0) if video else 0
+    if round(abs(float(rotation)))%180==90:
+        width,height=height,width
     return {'duration':float(data.get('format',{}).get('duration',0)),
-            'size':Path(path).stat().st_size, 'width':video.get('width',0) if video else 0,
-            'height':video.get('height',0) if video else 0, 'video_codec':video.get('codec_name') if video else None,
+            'size':Path(path).stat().st_size, 'width':width,
+            'height':height, 'video_codec':video.get('codec_name') if video else None,
             'format':data.get('format',{}).get('format_name',''), 'audio':[track(st) for st in audio],
             'subtitles':[{**track(st),'editable':st.get('codec_name') in TEXT_SUBS} for st in streams if st['codec_type']=='subtitle']}
 
@@ -273,9 +277,10 @@ async def render(project, payload, ident):
         filters.append(f'[0:a:{edit.audio.track}]volume={edit.audio.volume},atrim=duration={duration},asetpts=PTS-STARTPTS[a0]')
         audios.append('[a0]')
     if music_index is not None:
-        fade_in=min(edit.audio.fade_in,duration/2)
-        fade_out=min(edit.audio.fade_out,duration/2)
-        filters.append(f'[{music_index}:a:0]atrim=duration={duration},asetpts=PTS-STARTPTS,volume={edit.audio.music_volume},afade=t=in:d={fade_in},afade=t=out:st={duration-fade_out}:d={fade_out}[music]')
+        clip_duration=edit.end-edit.start
+        fade_in=min(edit.audio.fade_in,clip_duration/2)
+        fade_out=min(edit.audio.fade_out,clip_duration/2)
+        filters.append(f'[{music_index}:a:0]atrim=duration={duration},asetpts=PTS-STARTPTS,volume={edit.audio.music_volume},afade=t=in:d={fade_in},afade=t=out:st={clip_duration-fade_out}:d={fade_out}[music]')
         audios.append('[music]')
     if len(audios)==2:
         filters.append(''.join(audios)+'amix=inputs=2:duration=longest:normalize=0[aout]')
