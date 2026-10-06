@@ -1,0 +1,19 @@
+name: Verify
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-liberation fonts-noto-core
+      - run: pip install -r backend/requirements.txt -c backend/constraints.txt -r backend/requirements-dev.txt
+      - run: PYTHONPATH=backend pytest backend/tests -q
+      - run: npm --prefix frontend ci && npm --prefix frontend run build
