@@ -18,7 +18,7 @@ async def download(project_id, payload, ident):
     timeout = aiohttp.ClientTimeout(total=None, connect=30, sock_read=60)
     try:
         async with aiohttp.ClientSession(
-            connector=connector(), timeout=timeout, trust_env=False
+            connector=connector(payload.get("proxy")), timeout=timeout, trust_env=False
         ) as session:
             for _ in range(6):
                 validate_url(url)

@@ -6,7 +6,7 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 
 ## Features
 
-- Direct HTTP/HTTPS downloads with complete signed URLs, upload progress, cancellation, and actionable errors.
+- Direct HTTP/HTTPS downloads with complete signed URLs, optional SOCKS5 proxies, upload progress, cancellation, and actionable errors.
 - Persistent projects and background jobs; one render at a time with three encoding threads.
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
 - Draggable trim handles, exact time fields, and cuts re-encoded for precision.
@@ -55,6 +55,14 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 7. Download the MP4, or open a clip and explicitly click **Send now** after connecting Telegram.
 
 Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge; the default 1920-pixel edge produces Full HD landscape or vertical clips. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
+
+## SOCKS5 downloads
+
+In **New project → Video link**, enable **Use SOCKS5 proxy** and enter its hostname/IP address and port (usually 1080). Username and password are optional. **Save proxy** stores the connection for future downloads; starting a proxied download also saves it. Keep the checkbox off to connect directly.
+
+Passwords are encrypted and never returned to the browser. Leaving the password blank retains it only for the same host, port and username. Use **Clear saved password** to remove authentication or **Remove saved proxy** to delete the profile. Each queued job retains an encrypted snapshot, so changes apply to new downloads; existing jobs and retries keep their original connection.
+
+Video hostnames are resolved and validated locally, then public IP addresses are sent through SOCKS5. Redirects use the same proxy and retain signed query parameters. HTTPS certificate verification and the original hostname are preserved. The proxy must be reachable from the application; in Docker, `localhost` refers to the application container. Remote proxy DNS (`socks5h`), proxy chains and HTTP proxies are not supported. These settings apply to URL imports, not Telegram uploads or browser playback.
 
 ## Telegram
 

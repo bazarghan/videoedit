@@ -102,6 +102,46 @@ class Edit(Strict):
 class ImportURL(Strict):
     url: str = Field(min_length=8, max_length=12000)
     name: str = Field(default="Imported video", min_length=1, max_length=120)
+    use_proxy: bool = False
+
+
+class DownloadProxyConfig(Strict):
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(default=1080, ge=1, le=65535)
+    username: str = Field(default="", max_length=255)
+    password: str = Field(default="", max_length=255)
+    clear_password: bool = False
+
+    @field_validator("host")
+    @classmethod
+    def proxy_host(cls, value):
+        import ipaddress
+        import re
+
+        value = value.strip().removeprefix("[").removesuffix("]")
+        try:
+            return str(ipaddress.ip_address(value))
+        except ValueError:
+            pass
+        try:
+            value = value.encode("idna").decode("ascii").lower().rstrip(".")
+        except UnicodeError:
+            raise ValueError("Enter a proxy hostname or IP address.") from None
+        if not value or any(
+            not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in value.split(".")
+        ):
+            raise ValueError(
+                "Enter a proxy hostname or IP address, without a scheme or port."
+            )
+        return value
+
+    @field_validator("username", "password")
+    @classmethod
+    def credential_size(cls, value):
+        if len(value.encode("utf-8")) > 255:
+            raise ValueError("SOCKS5 credentials must be at most 255 bytes each.")
+        return value
 
 
 class Login(Strict):

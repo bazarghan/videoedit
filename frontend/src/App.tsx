@@ -20,9 +20,30 @@ import {
   ChevronRight,
   HardDrive,
 } from "lucide-react";
-import { api, json, size, clock, Project, Job, Clip, Settings } from "./types";
+import {
+  api,
+  json,
+  size,
+  clock,
+  Project,
+  Job,
+  Clip,
+  Settings,
+  DownloadProxy,
+  DownloadProxyDraft,
+} from "./types";
 import Editor from "./Editor";
 import SettingsPage from "./Settings";
+import DownloadProxyFields from "./DownloadProxy";
+
+const emptyProxy: DownloadProxyDraft = {
+  host: "",
+  port: 1080,
+  username: "",
+  password: "",
+  password_saved: false,
+  clear_password: false,
+};
 
 const nav = [
   { id: "projects", label: "Projects", icon: LayoutGrid },
@@ -47,6 +68,9 @@ export default function App() {
     [name, setName] = useState(""),
     [tab, setTab] = useState("url"),
     [progress, setProgress] = useState(0);
+  const [useProxy, setUseProxy] = useState(false),
+    [proxy, setProxy] = useState<DownloadProxyDraft>(emptyProxy),
+    [proxyBusy, setProxyBusy] = useState(false);
   const [dest, setDest] = useState("me"),
     [caption, setCaption] = useState(""),
     [asFile, setAsFile] = useState(false),
@@ -74,6 +98,11 @@ export default function App() {
     refresh().catch((e) => setError(e.message));
     api<Settings>("/settings")
       .then(setSettings)
+      .catch((e) => setError(e.message));
+    api<DownloadProxy>("/settings/download-proxy")
+      .then((config) =>
+        setProxy({ ...config, password: "", clear_password: false }),
+      )
       .catch((e) => setError(e.message));
     const t = setInterval(() => refresh().catch(() => {}), 2000);
     return () => clearInterval(t);
@@ -105,9 +134,14 @@ export default function App() {
     e.preventDefault();
     setBusy(true);
     try {
+      if (useProxy) await saveProxy();
       const r = await api(
         "/import/url",
-        json("POST", { url, name: name || "Imported video" }),
+        json("POST", {
+          url,
+          name: name || "Imported video",
+          use_proxy: useProxy,
+        }),
       );
       setUrl("");
       setName("");
@@ -118,6 +152,34 @@ export default function App() {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+  async function saveProxy() {
+    const config = await api<DownloadProxy>(
+      "/settings/download-proxy",
+      json("PUT", {
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password,
+        clear_password: proxy.clear_password,
+      }),
+    );
+    setProxy({ ...config, password: "", clear_password: false });
+  }
+  async function changeProxy(remove = false) {
+    setProxyBusy(true);
+    try {
+      if (remove) {
+        await api("/settings/download-proxy", json("DELETE"));
+        setProxy(emptyProxy);
+        setUseProxy(false);
+      } else await saveProxy();
+      toast(remove ? "Saved proxy removed." : "SOCKS5 proxy saved securely.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setProxyBusy(false);
     }
   }
   function upload(file: File) {
@@ -683,7 +745,16 @@ export default function App() {
                     maxLength={120}
                   />
                 </label>
-                <button className="primary wide" disabled={busy}>
+                <DownloadProxyFields
+                  enabled={useProxy}
+                  onEnabled={setUseProxy}
+                  config={proxy}
+                  onChange={setProxy}
+                  busy={busy || proxyBusy}
+                  onSave={() => changeProxy()}
+                  onRemove={() => changeProxy(true)}
+                />
+                <button className="primary wide" disabled={busy || proxyBusy}>
                   {busy ? (
                     <LoaderCircle className="spin" size={18} />
                   ) : (

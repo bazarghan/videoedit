@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pwdlib import PasswordHash
@@ -18,6 +19,7 @@ from . import media
 from . import store as s
 from .models import (
     Cue,
+    DownloadProxyConfig,
     Edit,
     ImportURL,
     Login,
@@ -70,6 +72,12 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_input(request, exc):
+    # Validation responses must not echo signed URLs or proxy passwords.
+    return JSONResponse({"detail": "Check your entries and try again."}, 422)
 
 
 @app.middleware("http")
@@ -264,9 +272,17 @@ async def get_project(ident: str):
 @app.post("/api/import/url")
 async def import_url(body: ImportURL):
     validate_url(body.url)
+    payload = {"url": body.url}
+    if body.use_proxy:
+        config = s.setting("download_proxy", {})
+        if not config.get("host"):
+            raise ValueError(
+                "Save a SOCKS5 proxy before enabling it for this download."
+            )
+        payload["proxy"] = config
     s.space_for()
     ident = new_project(body.name)
-    job_id = s.job("download", ident, {"url": body.url})
+    job_id = s.job("download", ident, payload)
     return {"project_id": ident, "job_id": job_id}
 
 
@@ -678,6 +694,41 @@ async def get_settings():
         "telegram_status": await telegram.status(),
         "storage": storage_info(),
     }
+
+
+@app.get("/api/settings/download-proxy")
+async def get_download_proxy():
+    config = s.setting("download_proxy", {})
+    return {
+        "host": config.get("host", ""),
+        "port": config.get("port", 1080),
+        "username": config.get("username", ""),
+        "password_saved": bool(config.get("password")),
+    }
+
+
+@app.put("/api/settings/download-proxy")
+async def save_download_proxy(body: DownloadProxyConfig):
+    previous = s.setting("download_proxy", {})
+    config = body.model_dump(exclude={"clear_password"})
+    if (
+        not body.password
+        and not body.clear_password
+        and all(
+            config[key] == previous.get(key) for key in ("host", "port", "username")
+        )
+    ):
+        config["password"] = previous.get("password", "")
+    if config["password"] and not config["username"]:
+        raise ValueError("Enter a username when using a SOCKS5 password.")
+    s.set_setting("download_proxy", config)
+    return await get_download_proxy()
+
+
+@app.delete("/api/settings/download-proxy")
+async def remove_download_proxy():
+    s.set_setting("download_proxy", {})
+    return await get_download_proxy()
 
 
 @app.put("/api/settings/storage")

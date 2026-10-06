@@ -709,6 +709,33 @@ label.check {
   font-weight: 400;
   line-height: 1.5;
 }
+.download-proxy {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 16px 12px;
+  margin: 20px 0;
+  min-width: 0;
+}
+.proxy-toggle span {
+  margin-left: auto;
+}
+.download-proxy .form-row label {
+  margin: 4px 0 12px;
+}
+.download-proxy .proxy-address {
+  grid-template-columns: minmax(0, 1fr) 100px;
+}
+.proxy-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.proxy-actions .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .hint {
   font-size: 10px;
   line-height: 1.7;

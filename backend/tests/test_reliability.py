@@ -75,7 +75,7 @@ def test_redirect_and_signed_query_preserved(monkeypatch):
                 else Reply(200, {})
             )
 
-    monkeypatch.setattr(workers, "connector", lambda: None)
+    monkeypatch.setattr(workers, "connector", lambda proxy=None: None)
     monkeypatch.setattr(workers.aiohttp, "ClientSession", Session)
     monkeypatch.setattr(workers.media, "ingest", AsyncMock())
     pid = s.uid()

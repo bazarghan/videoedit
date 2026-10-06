@@ -120,6 +120,16 @@ export type Settings = {
     categories: Record<string, number>;
   };
 };
+export type DownloadProxy = {
+  host: string;
+  port: number;
+  username: string;
+  password_saved: boolean;
+};
+export type DownloadProxyDraft = DownloadProxy & {
+  password: string;
+  clear_password: boolean;
+};
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
