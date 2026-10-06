@@ -20,7 +20,7 @@ def ffmpeg(*args):
 def footage(tmp_path_factory):
     path=tmp_path_factory.mktemp('footage')
     (path/'captions.srt').write_text('1\n00:00:01,000 --> 00:00:04,000\nA moment worth keeping\n\n2\n00:00:04,000 --> 00:00:09,000\nMake it yours\n')
-    ffmpeg('-f','lavfi','-i','testsrc2=size=640x360:rate=30:duration=10','-f','lavfi','-i','sine=frequency=440:duration=10','-i',path/'captions.srt','-map','0:v','-map','1:a','-map','2:s','-c:v','libx264','-preset','ultrafast','-c:a','aac','-c:s','srt','-metadata:s:s:0','language=eng',path/'source.mkv')
+    ffmpeg('-f','lavfi','-i','testsrc2=size=640x360:rate=30:duration=10','-f','lavfi','-i','sine=frequency=440:duration=10','-i',path/'captions.srt','-map','0:v','-map','1:a','-map','2:s','-c:v','libx265','-x265-params','pools=1:frame-threads=1:log-level=error','-preset','ultrafast','-c:a','aac','-c:s','srt','-metadata:s:s:0','language=eng',path/'source.mkv')
     ffmpeg('-f','lavfi','-i','sine=frequency=880:duration=3','-c:a','pcm_s16le',path/'music.wav')
     ffmpeg('-f','lavfi','-i','color=c=red@0.5:s=100x50,format=rgba','-frames:v','1',path/'mark.png')
     return path
@@ -51,6 +51,7 @@ def test_complete_workflow(footage,tmp_path):
         wait_job(client,result['job_id'])
         p=client.get('/api/projects/'+pid).json()
         assert p['metadata']['width']==640 and p['subtitles'][0]['editable']==1
+        assert p['metadata']['video_codec']=='hevc'
         proxy=next(j for j in client.get('/api/jobs').json() if j['kind']=='proxy' and j['project_id']==pid)
         wait_job(client,proxy['id'])
         playback=client.get(f'/api/media/project/{pid}/preview',headers={'Range':'bytes=0-99'})
