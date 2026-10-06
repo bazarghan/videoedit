@@ -1,41 +1,936 @@
-import {useEffect,useState} from 'react';
-import {Scissors,LayoutGrid,ListVideo,Film,Settings as SettingsIcon,LogOut,Plus,ArrowUpRight,Upload,Link,Play,Download,Send,Trash2,X,LoaderCircle,Check,ChevronRight,HardDrive} from 'lucide-react';
-import {api,json,size,clock,Project,Job,Clip,Settings} from './types';
-import Editor from './Editor';
-import SettingsPage from './Settings';
+import { useEffect, useState } from "react";
+import {
+  Scissors,
+  LayoutGrid,
+  ListVideo,
+  Film,
+  Settings as SettingsIcon,
+  LogOut,
+  Plus,
+  ArrowUpRight,
+  Upload,
+  Link,
+  Play,
+  Download,
+  Send,
+  Trash2,
+  X,
+  LoaderCircle,
+  Check,
+  ChevronRight,
+  HardDrive,
+} from "lucide-react";
+import { api, json, size, clock, Project, Job, Clip, Settings } from "./types";
+import Editor from "./Editor";
+import SettingsPage from "./Settings";
 
-const nav=[{id:'projects',label:'Projects',icon:LayoutGrid},{id:'queue',label:'Activity',icon:ListVideo},{id:'clips',label:'Rendered clips',icon:Film},{id:'settings',label:'Settings',icon:SettingsIcon}];
-export default function App(){
- const [authenticated,setAuthenticated]=useState<boolean|null>(null),[page,setPage]=useState('projects'),[selected,setSelected]=useState('');
- const [projects,setProjects]=useState<Project[]>([]),[jobs,setJobs]=useState<Job[]>([]),[clips,setClips]=useState<Clip[]>([]),[settings,setSettings]=useState<Settings|null>(null);
- const [notice,setNotice]=useState(''),[error,setError]=useState(''),[importOpen,setImportOpen]=useState(false),[openClip,setOpenClip]=useState<Clip|null>(null),[busy,setBusy]=useState(false);
- const [url,setUrl]=useState(''),[name,setName]=useState(''),[tab,setTab]=useState('url'),[progress,setProgress]=useState(0);
- const [dest,setDest]=useState('me'),[caption,setCaption]=useState(''),[asFile,setAsFile]=useState(false),[destinations,setDestinations]=useState<{id:string;name:string}[]>([]);
- const active=jobs.filter(j=>['queued','running'].includes(j.status));
- useEffect(()=>{api('/me').then(()=>setAuthenticated(true)).catch(()=>setAuthenticated(false));},[]);
- async function refresh(){const [p,j,c]=await Promise.all([api<Project[]>('/projects'),api<Job[]>('/jobs'),api<Clip[]>('/clips')]);setProjects(p);setJobs(j);setClips(c);}
- useEffect(()=>{if(!authenticated)return; refresh().catch(e=>setError(e.message));api<Settings>('/settings').then(setSettings).catch(e=>setError(e.message));const t=setInterval(()=>refresh().catch(()=>{}),2000);return()=>clearInterval(t);},[authenticated]);
- useEffect(()=>{if(!notice)return; const t=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(t);},[notice]);
- const toast=(message:string)=>{setError('');setNotice(message);};
- async function action(fn:()=>Promise<unknown>,message?:string){try{await fn();if(message)toast(message);await refresh();}catch(e){setError((e as Error).message);}}
- function openEditor(id:string){setSelected(id);setPage('editor');setImportOpen(false);}
- async function importURL(e:React.FormEvent){e.preventDefault();setBusy(true);try{const r=await api('/import/url',json('POST',{url,name:name||'Imported video'}));setUrl('');setName('');openEditor(r.project_id);toast('Download added. Your editor will be ready after processing.');await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- function upload(file:File){setBusy(true);setProgress(0);const form=new FormData();form.append('file',file);const xhr=new XMLHttpRequest();xhr.open('POST','/api/import/upload');xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(e.loaded/e.total*100);};xhr.onload=()=>{setBusy(false);try{const data=JSON.parse(xhr.responseText);if(xhr.status>=400)throw new Error(typeof data.detail==='string'?data.detail:'Upload failed.');openEditor(data.project_id);toast('Video uploaded. Preparing your editor…');refresh();}catch(e){setError((e as Error).message);}};xhr.onerror=()=>{setBusy(false);setError('The upload was interrupted. Try again.');};xhr.send(form);}
- async function showClip(clip:Clip){setOpenClip(clip);setCaption('');setAsFile(false);setDest(settings?.telegram.destination||'me');if(settings?.telegram_status.connected)try{setDestinations(await api('/telegram/destinations'));}catch(e){setError((e as Error).message);}}
- if(authenticated===null)return <div className="splash"><LoaderCircle className="spin"/> Opening your studio</div>;
- if(!authenticated)return <Login onLogin={()=>setAuthenticated(true)}/>;
- return <div className="app-shell">
-  <aside className="sidebar"><a className="brand" href="#" onClick={e=>{e.preventDefault();setPage('projects');}}><span className="brand-mark"><Scissors size={21}/></span>videoedit<span className="brand-dot">.</span></a><div className="sidebar-label">YOUR WORKSPACE</div><nav>{nav.map(n=><button className={page===n.id?'nav-item active':'nav-item'} key={n.id} onClick={()=>setPage(n.id)}><n.icon size={19}/>{n.label}{n.id==='queue'&&active.length>0&&<span className="count">{active.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="storage-mini"><HardDrive size={16}/><span>Workspace storage</span></div><div className="meter"><i style={{width:`${Math.min(100,(settings?.storage.used||0)/((settings?.storage.limit_gb||20)*1024**3)*100)}%`}}/></div><small>{size(settings?.storage.used)} of {settings?.storage.limit_gb||20} GB</small><button aria-label="Sign out" className="account" onClick={()=>action(async()=>{await api('/logout',json('POST'));setAuthenticated(false);})}><span className="avatar">A</span><span>Administrator<small>Private workspace</small></span><LogOut size={17}/></button></div></aside>
-  <main className={'main '+(page==='editor'?'editor-main':'')}><header className="topbar"><span className="breadcrumb">Workspace <ChevronRight size={14}/> {page==='editor'?'Video editor':nav.find(n=>n.id===page)?.label}</span><span className="topbar-right"><span className="live-dot"/>{active.length?`${active.length} active ${active.length===1?'job':'jobs'}`:'All caught up'}<span className="avatar small">A</span></span></header>
-  {page==='projects'&&<div className="page"><div className="page-heading"><div><span className="eyebrow">A LITTLE EDITING. A BIG MOMENT.</span><h1>Your next great clip<br/>starts here<span className="accent">.</span></h1><p>Bring a video. Find your moment. Make it yours.</p></div><button className="primary" onClick={()=>setImportOpen(true)}><Plus size={18}/> New project</button></div><div className="import-banner"><div className="banner-icon"><Link size={26}/></div><div><h3>From a link to a finished clip</h3><p>Import a video, shape the frame, add captions, and share.</p></div><button className="secondary" onClick={()=>{setTab('url');setImportOpen(true);}}>Import video <ArrowUpRight size={16}/></button></div><div className="section-heading"><h2>Recent projects <span>{projects.length}</span></h2><span className="muted">Your originals, edits & ideas</span></div>{!projects.length?<div className="empty"><div className="empty-art"><Film size={42}/><span><Plus size={18}/></span></div><h3>A blank canvas for your next story</h3><p>Paste a direct video link or upload an MP4, MKV, or WebM.</p><button className="primary" onClick={()=>setImportOpen(true)}>Import your first video <ArrowUpRight size={16}/></button></div>:<div className="project-grid">{projects.map(p=><article className="project-card" key={p.id}><button className="project-thumb" onClick={()=>openEditor(p.id)}>{p.has_thumbnail?<img src={`/api/media/project/${p.id}/thumbnail`} alt="Video thumbnail"/>:<Film size={32}/>}<span className="thumb-play"><Play size={22} fill="currentColor"/></span><span className="duration">{clock(p.metadata.duration)}</span></button><div className="project-info"><button onClick={()=>openEditor(p.id)}><h3>{p.name}</h3></button><p>{p.metadata.width?`${p.metadata.width} × ${p.metadata.height} · ${size(p.metadata.size)}`:'Preparing source video'}</p><div className="card-footer"><span className={'badge '+(p.status==='ready'?'success':'')}>{p.status}</span><button className="icon-button" aria-label={`Delete ${p.name}`} onClick={()=>{if(confirm('Delete this project and all its media?'))action(()=>api(`/projects/${p.id}`,json('DELETE')),'Project deleted.');}}><Trash2 size={15}/></button></div></div></article>)}</div>}</div>}
-  {page==='editor'&&<Editor id={selected} jobs={jobs} clips={clips} onError={setError} toast={toast} onClip={showClip} onQueue={()=>setPage('queue')}/>}
-  {page==='queue'&&<div className="page"><div className="page-heading compact"><div><span className="eyebrow">KEEP THINGS MOVING</span><h1>Activity</h1><p>Downloads, previews, renders, and Telegram uploads.</p></div><span className="pill">One render at a time</span></div>{!jobs.length?<div className="empty"><ListVideo size={40}/><h3>Nothing in the queue yet</h3><p>Your background jobs will appear here.</p></div>:<div className="job-list">{jobs.map(j=><div className="job-card" key={j.id}><div className="job-icon">{j.status==='running'?<LoaderCircle className="spin" size={22}/>:j.status==='completed'?<Check size={22}/>:j.kind==='download'?<Download size={22}/>:<Film size={22}/>}</div><div className="job-body"><div className="job-title"><strong>{{download:'Download',ingest:'Inspect video',proxy:'Browser preview',render:'Render clip',telegram:'Send to Telegram'}[j.kind]}</strong><span className={'badge '+(j.status==='completed'?'success':j.status==='failed'?'danger':'')}>{j.status}</span></div><button className="text-link" onClick={()=>openEditor(j.project_id)}>{projects.find(p=>p.id===j.project_id)?.name||'Project'}</button>{j.status==='running'&&<><div className="meter"><i style={{width:`${j.progress}%`}}/></div><small>{j.progress.toFixed(0)}% · {clock(j.elapsed)} elapsed {j.eta!==null?`· ~${clock(j.eta)} remaining`:''}{j.speed>0?` · ${size(j.bytes)} · ${size(j.speed)}/s`:''}</small></>}{j.error&&<p className="job-error">{j.error}</p>}</div><div className="job-actions">{['queued','running'].includes(j.status)&&<button className="secondary" onClick={()=>action(()=>api(`/jobs/${j.id}/cancel`,json('POST')))}>Cancel</button>}{['failed','cancelled','interrupted'].includes(j.status)&&<button className="secondary" onClick={()=>{if(j.kind==='telegram'&&j.status==='interrupted'&&!confirm('This send may already have completed. Retry and risk sending a duplicate?'))return;action(()=>api(`/jobs/${j.id}/retry`,json('POST')),'Job queued again.');}}>Retry</button>}{j.result_id&&j.kind==='render'&&<button className="secondary" onClick={()=>{const c=clips.find(c=>c.id===j.result_id);if(c)showClip(c);}}>View clip <ArrowUpRight size={14}/></button>}</div></div>)}</div>}</div>}
-  {page==='clips'&&<div className="page"><div className="page-heading compact"><div><span className="eyebrow">READY FOR THE WORLD</span><h1>Rendered clips</h1><p>Finished exports and short previews, all in one place.</p></div><span className="pill">{clips.length} clips</span></div>{!clips.length?<div className="empty"><Film size={40}/><h3>Your finished clips belong here</h3><p>Open a project and render your selected moment.</p></div>:<div className="project-grid">{clips.map(c=><article className="project-card" key={c.id}><button className="project-thumb" onClick={()=>showClip(c)}><video src={`/api/media/clip/${c.id}#t=0.1`} preload="metadata" muted/><span className="thumb-play"><Play size={22} fill="currentColor"/></span><span className="duration">{clock(c.metadata.duration)}</span>{c.preview&&<span className="preview-tag">Preview</span>}</button><div className="project-info"><h3>{c.name}</h3><p>{c.metadata.width} × {c.metadata.height} · {size(c.metadata.size)}</p><div className="card-footer"><a className="text-link" href={`/api/media/clip/${c.id}?download=true`}><Download size={14}/> Download</a><button className="icon-button" aria-label="Send to Telegram" onClick={()=>showClip(c)}><Send size={16}/></button><button className="icon-button" aria-label="Delete clip" onClick={()=>{if(confirm('Delete this rendered clip?'))action(()=>api(`/clips/${c.id}`,json('DELETE')),'Clip deleted.');}}><Trash2 size={16}/></button></div></div></article>)}</div>}</div>}
-  {page==='settings'&&<SettingsPage onSettings={setSettings} onError={setError} toast={toast}/>}
-  <footer className="footer">Made for the moments worth keeping.<span>VideoEdit · Clip studio</span></footer></main>
-  {(error||notice)&&<div role="alert" className={'toast '+(error?'error':'')}><span>{error||notice}</span><button aria-label="Dismiss" onClick={()=>{setError('');setNotice('');}}><X size={16}/></button></div>}
-  {importOpen&&<div className="modal-shade" onClick={()=>{if(!busy)setImportOpen(false);}}><section className="modal" onClick={e=>e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">LET’S MAKE SOMETHING</span><h2>Import a video</h2></div><button className="icon-button" disabled={busy} aria-label="Close" onClick={()=>setImportOpen(false)}><X/></button></div><div className="tabs"><button className={tab==='url'?'active':''} onClick={()=>setTab('url')}><Link size={15}/> Video link</button><button className={tab==='upload'?'active':''} onClick={()=>setTab('upload')}><Upload size={15}/> Upload a file</button></div>{tab==='url'?<form onSubmit={importURL}><label>Direct video URL<textarea required placeholder="https://example.com/video.mp4?token=…" value={url} onChange={e=>setUrl(e.target.value)}/></label><p className="hint">Use a direct link to an MP4, MKV, or WebM file. Signed links keep all their query parameters.</p><label>Project name <span className="muted">(optional)</span><input value={name} onChange={e=>setName(e.target.value)} placeholder="A moment worth keeping" maxLength={120}/></label><button className="primary wide" disabled={busy}>{busy?<LoaderCircle className="spin" size={18}/>:<Download size={18}/>} {busy?'Adding…':'Download & create project'}</button></form>:<label className="dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy&&e.dataTransfer.files[0])upload(e.dataTransfer.files[0]);}}><Upload size={30}/><strong>{busy?`Uploading · ${progress.toFixed(0)}%`:'Drop your video here'}</strong><span>{busy?'Keep this window open':'or click to choose a file'}</span><small>MP4, MKV, WebM · limited by available workspace storage</small><input type="file" accept="video/*,.mkv" disabled={busy} onChange={e=>{if(e.target.files?.[0])upload(e.target.files[0]);}}/>{busy&&<div className="meter"><i style={{width:`${progress}%`}}/></div>}</label>}</section></div>}
-  {openClip&&<div className="modal-shade" onClick={()=>setOpenClip(null)}><section className="modal clip-modal" onClick={e=>e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">{openClip.preview?'ACTUAL RENDER PREVIEW':'YOUR FINISHED CLIP'}</span><h2>{openClip.name}</h2></div><button className="icon-button" aria-label="Close clip" onClick={()=>setOpenClip(null)}><X/></button></div><video className="result-video" src={`/api/media/clip/${openClip.id}`} controls autoPlay/><div className="result-meta">{clock(openClip.metadata.duration)} · {openClip.metadata.width} × {openClip.metadata.height} · {size(openClip.metadata.size)}<a className="primary" href={`/api/media/clip/${openClip.id}?download=true`}><Download size={16}/> Download MP4</a></div><div className="send-panel"><h3><Send size={17}/> Send to Telegram</h3>{!settings?.telegram_status.connected?<p>Connect your account in <button className="text-link" onClick={()=>{setOpenClip(null);setPage('settings');}}>Settings</button> to send clips.</p>:<form onSubmit={e=>{e.preventDefault();action(()=>api(`/clips/${openClip.id}/send`,json('POST',{destination:dest,caption,as_file:asFile})),'Telegram upload queued. Track it in Activity.');}}><label>Destination<select value={dest} onChange={e=>setDest(e.target.value)}>{(destinations.length?destinations:[{id:'me',name:'Saved Messages'}]).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label><label>Caption<textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={1024} placeholder="Add a caption…"/></label><label className="check"><input type="checkbox" checked={asFile} onChange={e=>setAsFile(e.target.checked)}/> Send as a file instead of a playable video</label><button className="primary"><Send size={16}/> Send now</button></form>}</div></section></div>}
- </div>;
+const nav = [
+  { id: "projects", label: "Projects", icon: LayoutGrid },
+  { id: "queue", label: "Activity", icon: ListVideo },
+  { id: "clips", label: "Rendered clips", icon: Film },
+  { id: "settings", label: "Settings", icon: SettingsIcon },
+];
+export default function App() {
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null),
+    [page, setPage] = useState("projects"),
+    [selected, setSelected] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]),
+    [jobs, setJobs] = useState<Job[]>([]),
+    [clips, setClips] = useState<Clip[]>([]),
+    [settings, setSettings] = useState<Settings | null>(null);
+  const [notice, setNotice] = useState(""),
+    [error, setError] = useState(""),
+    [importOpen, setImportOpen] = useState(false),
+    [openClip, setOpenClip] = useState<Clip | null>(null),
+    [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState(""),
+    [name, setName] = useState(""),
+    [tab, setTab] = useState("url"),
+    [progress, setProgress] = useState(0);
+  const [dest, setDest] = useState("me"),
+    [caption, setCaption] = useState(""),
+    [asFile, setAsFile] = useState(false),
+    [destinations, setDestinations] = useState<{ id: string; name: string }[]>(
+      [],
+    );
+  const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
+  useEffect(() => {
+    api("/me")
+      .then(() => setAuthenticated(true))
+      .catch(() => setAuthenticated(false));
+  }, []);
+  async function refresh() {
+    const [p, j, c] = await Promise.all([
+      api<Project[]>("/projects"),
+      api<Job[]>("/jobs"),
+      api<Clip[]>("/clips"),
+    ]);
+    setProjects(p);
+    setJobs(j);
+    setClips(c);
+  }
+  useEffect(() => {
+    if (!authenticated) return;
+    refresh().catch((e) => setError(e.message));
+    api<Settings>("/settings")
+      .then(setSettings)
+      .catch((e) => setError(e.message));
+    const t = setInterval(() => refresh().catch(() => {}), 2000);
+    return () => clearInterval(t);
+  }, [authenticated]);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  const toast = (message: string) => {
+    setError("");
+    setNotice(message);
+  };
+  async function action(fn: () => Promise<unknown>, message?: string) {
+    try {
+      await fn();
+      if (message) toast(message);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  function openEditor(id: string) {
+    setSelected(id);
+    setPage("editor");
+    setImportOpen(false);
+  }
+  async function importURL(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await api(
+        "/import/url",
+        json("POST", { url, name: name || "Imported video" }),
+      );
+      setUrl("");
+      setName("");
+      openEditor(r.project_id);
+      toast("Download added. Your editor will be ready after processing.");
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function upload(file: File) {
+    setBusy(true);
+    setProgress(0);
+    const form = new FormData();
+    form.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/import/upload");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) setProgress((e.loaded / e.total) * 100);
+    };
+    xhr.onload = () => {
+      setBusy(false);
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 400)
+          throw new Error(
+            typeof data.detail === "string" ? data.detail : "Upload failed.",
+          );
+        openEditor(data.project_id);
+        toast("Video uploaded. Preparing your editor…");
+        refresh();
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    };
+    xhr.onerror = () => {
+      setBusy(false);
+      setError("The upload was interrupted. Try again.");
+    };
+    xhr.send(form);
+  }
+  async function showClip(clip: Clip) {
+    setOpenClip(clip);
+    setCaption("");
+    setAsFile(false);
+    setDest(settings?.telegram.destination || "me");
+    if (settings?.telegram_status.connected)
+      try {
+        setDestinations(await api("/telegram/destinations"));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+  }
+  if (authenticated === null)
+    return (
+      <div className="splash">
+        <LoaderCircle className="spin" /> Opening your studio
+      </div>
+    );
+  if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <a
+          className="brand"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setPage("projects");
+          }}
+        >
+          <span className="brand-mark">
+            <Scissors size={21} />
+          </span>
+          videoedit<span className="brand-dot">.</span>
+        </a>
+        <div className="sidebar-label">YOUR WORKSPACE</div>
+        <nav>
+          {nav.map((n) => (
+            <button
+              className={page === n.id ? "nav-item active" : "nav-item"}
+              key={n.id}
+              onClick={() => setPage(n.id)}
+            >
+              <n.icon size={19} />
+              {n.label}
+              {n.id === "queue" && active.length > 0 && (
+                <span className="count">{active.length}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="storage-mini">
+            <HardDrive size={16} />
+            <span>Workspace storage</span>
+          </div>
+          <div className="meter">
+            <i
+              style={{
+                width: `${Math.min(100, ((settings?.storage.used || 0) / ((settings?.storage.limit_gb || 20) * 1024 ** 3)) * 100)}%`,
+              }}
+            />
+          </div>
+          <small>
+            {size(settings?.storage.used)} of {settings?.storage.limit_gb || 20}{" "}
+            GB
+          </small>
+          <button
+            aria-label="Sign out"
+            className="account"
+            onClick={() =>
+              action(async () => {
+                await api("/logout", json("POST"));
+                setAuthenticated(false);
+              })
+            }
+          >
+            <span className="avatar">A</span>
+            <span>
+              Administrator<small>Private workspace</small>
+            </span>
+            <LogOut size={17} />
+          </button>
+        </div>
+      </aside>
+      <main className={"main " + (page === "editor" ? "editor-main" : "")}>
+        <header className="topbar">
+          <span className="breadcrumb">
+            Workspace <ChevronRight size={14} />{" "}
+            {page === "editor"
+              ? "Video editor"
+              : nav.find((n) => n.id === page)?.label}
+          </span>
+          <span className="topbar-right">
+            <span className="live-dot" />
+            {active.length
+              ? `${active.length} active ${active.length === 1 ? "job" : "jobs"}`
+              : "All caught up"}
+            <span className="avatar small">A</span>
+          </span>
+        </header>
+        {page === "projects" && (
+          <div className="page">
+            <div className="page-heading">
+              <div>
+                <span className="eyebrow">A LITTLE EDITING. A BIG MOMENT.</span>
+                <h1>
+                  Your next great clip
+                  <br />
+                  starts here<span className="accent">.</span>
+                </h1>
+                <p>Bring a video. Find your moment. Make it yours.</p>
+              </div>
+              <button className="primary" onClick={() => setImportOpen(true)}>
+                <Plus size={18} /> New project
+              </button>
+            </div>
+            <div className="import-banner">
+              <div className="banner-icon">
+                <Link size={26} />
+              </div>
+              <div>
+                <h3>From a link to a finished clip</h3>
+                <p>Import a video, shape the frame, add captions, and share.</p>
+              </div>
+              <button
+                className="secondary"
+                onClick={() => {
+                  setTab("url");
+                  setImportOpen(true);
+                }}
+              >
+                Import video <ArrowUpRight size={16} />
+              </button>
+            </div>
+            <div className="section-heading">
+              <h2>
+                Recent projects <span>{projects.length}</span>
+              </h2>
+              <span className="muted">Your originals, edits & ideas</span>
+            </div>
+            {!projects.length ? (
+              <div className="empty">
+                <div className="empty-art">
+                  <Film size={42} />
+                  <span>
+                    <Plus size={18} />
+                  </span>
+                </div>
+                <h3>A blank canvas for your next story</h3>
+                <p>Paste a direct video link or upload an MP4, MKV, or WebM.</p>
+                <button className="primary" onClick={() => setImportOpen(true)}>
+                  Import your first video <ArrowUpRight size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="project-grid">
+                {projects.map((p) => (
+                  <article className="project-card" key={p.id}>
+                    <button
+                      className="project-thumb"
+                      onClick={() => openEditor(p.id)}
+                    >
+                      {p.has_thumbnail ? (
+                        <img
+                          src={`/api/media/project/${p.id}/thumbnail`}
+                          alt="Video thumbnail"
+                        />
+                      ) : (
+                        <Film size={32} />
+                      )}
+                      <span className="thumb-play">
+                        <Play size={22} fill="currentColor" />
+                      </span>
+                      <span className="duration">
+                        {clock(p.metadata.duration)}
+                      </span>
+                    </button>
+                    <div className="project-info">
+                      <button onClick={() => openEditor(p.id)}>
+                        <h3>{p.name}</h3>
+                      </button>
+                      <p>
+                        {p.metadata.width
+                          ? `${p.metadata.width} × ${p.metadata.height} · ${size(p.metadata.size)}`
+                          : "Preparing source video"}
+                      </p>
+                      <div className="card-footer">
+                        <span
+                          className={
+                            "badge " + (p.status === "ready" ? "success" : "")
+                          }
+                        >
+                          {p.status}
+                        </span>
+                        <button
+                          className="icon-button"
+                          aria-label={`Delete ${p.name}`}
+                          onClick={() => {
+                            if (
+                              confirm("Delete this project and all its media?")
+                            )
+                              action(
+                                () => api(`/projects/${p.id}`, json("DELETE")),
+                                "Project deleted.",
+                              );
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {page === "editor" && (
+          <Editor
+            id={selected}
+            jobs={jobs}
+            clips={clips}
+            onError={setError}
+            toast={toast}
+            onClip={showClip}
+            onQueue={() => setPage("queue")}
+          />
+        )}
+        {page === "queue" && (
+          <div className="page">
+            <div className="page-heading compact">
+              <div>
+                <span className="eyebrow">KEEP THINGS MOVING</span>
+                <h1>Activity</h1>
+                <p>Downloads, previews, renders, and Telegram uploads.</p>
+              </div>
+              <span className="pill">One render at a time</span>
+            </div>
+            {!jobs.length ? (
+              <div className="empty">
+                <ListVideo size={40} />
+                <h3>Nothing in the queue yet</h3>
+                <p>Your background jobs will appear here.</p>
+              </div>
+            ) : (
+              <div className="job-list">
+                {jobs.map((j) => (
+                  <div className="job-card" key={j.id}>
+                    <div className="job-icon">
+                      {j.status === "running" ? (
+                        <LoaderCircle className="spin" size={22} />
+                      ) : j.status === "completed" ? (
+                        <Check size={22} />
+                      ) : j.kind === "download" ? (
+                        <Download size={22} />
+                      ) : (
+                        <Film size={22} />
+                      )}
+                    </div>
+                    <div className="job-body">
+                      <div className="job-title">
+                        <strong>
+                          {
+                            {
+                              download: "Download",
+                              ingest: "Inspect video",
+                              proxy: "Browser preview",
+                              render: "Render clip",
+                              telegram: "Send to Telegram",
+                            }[j.kind]
+                          }
+                        </strong>
+                        <span
+                          className={
+                            "badge " +
+                            (j.status === "completed"
+                              ? "success"
+                              : j.status === "failed"
+                                ? "danger"
+                                : "")
+                          }
+                        >
+                          {j.status}
+                        </span>
+                      </div>
+                      <button
+                        className="text-link"
+                        onClick={() => openEditor(j.project_id)}
+                      >
+                        {projects.find((p) => p.id === j.project_id)?.name ||
+                          "Project"}
+                      </button>
+                      {j.status === "running" && (
+                        <>
+                          <div className="meter">
+                            <i style={{ width: `${j.progress}%` }} />
+                          </div>
+                          <small>
+                            {j.progress.toFixed(0)}% · {clock(j.elapsed)}{" "}
+                            elapsed{" "}
+                            {j.eta !== null
+                              ? `· ~${clock(j.eta)} remaining`
+                              : ""}
+                            {j.speed > 0
+                              ? ` · ${size(j.bytes)} · ${size(j.speed)}/s`
+                              : ""}
+                          </small>
+                        </>
+                      )}
+                      {j.error && <p className="job-error">{j.error}</p>}
+                    </div>
+                    <div className="job-actions">
+                      {["queued", "running"].includes(j.status) && (
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            action(() =>
+                              api(`/jobs/${j.id}/cancel`, json("POST")),
+                            )
+                          }
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {["failed", "cancelled", "interrupted"].includes(
+                        j.status,
+                      ) && (
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            if (
+                              j.kind === "telegram" &&
+                              j.status === "interrupted" &&
+                              !confirm(
+                                "This send may already have completed. Retry and risk sending a duplicate?",
+                              )
+                            )
+                              return;
+                            action(
+                              () => api(`/jobs/${j.id}/retry`, json("POST")),
+                              "Job queued again.",
+                            );
+                          }}
+                        >
+                          Retry
+                        </button>
+                      )}
+                      {j.result_id && j.kind === "render" && (
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            const c = clips.find((c) => c.id === j.result_id);
+                            if (c) showClip(c);
+                          }}
+                        >
+                          View clip <ArrowUpRight size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {page === "clips" && (
+          <div className="page">
+            <div className="page-heading compact">
+              <div>
+                <span className="eyebrow">READY FOR THE WORLD</span>
+                <h1>Rendered clips</h1>
+                <p>Finished exports and short previews, all in one place.</p>
+              </div>
+              <span className="pill">{clips.length} clips</span>
+            </div>
+            {!clips.length ? (
+              <div className="empty">
+                <Film size={40} />
+                <h3>Your finished clips belong here</h3>
+                <p>Open a project and render your selected moment.</p>
+              </div>
+            ) : (
+              <div className="project-grid">
+                {clips.map((c) => (
+                  <article className="project-card" key={c.id}>
+                    <button
+                      className="project-thumb"
+                      onClick={() => showClip(c)}
+                    >
+                      <video
+                        src={`/api/media/clip/${c.id}#t=0.1`}
+                        preload="metadata"
+                        muted
+                      />
+                      <span className="thumb-play">
+                        <Play size={22} fill="currentColor" />
+                      </span>
+                      <span className="duration">
+                        {clock(c.metadata.duration)}
+                      </span>
+                      {c.preview && (
+                        <span className="preview-tag">Preview</span>
+                      )}
+                    </button>
+                    <div className="project-info">
+                      <h3>{c.name}</h3>
+                      <p>
+                        {c.metadata.width} × {c.metadata.height} ·{" "}
+                        {size(c.metadata.size)}
+                      </p>
+                      <div className="card-footer">
+                        <a
+                          className="text-link"
+                          href={`/api/media/clip/${c.id}?download=true`}
+                        >
+                          <Download size={14} /> Download
+                        </a>
+                        <button
+                          className="icon-button"
+                          aria-label="Send to Telegram"
+                          onClick={() => showClip(c)}
+                        >
+                          <Send size={16} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label="Delete clip"
+                          onClick={() => {
+                            if (confirm("Delete this rendered clip?"))
+                              action(
+                                () => api(`/clips/${c.id}`, json("DELETE")),
+                                "Clip deleted.",
+                              );
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {page === "settings" && (
+          <SettingsPage
+            onSettings={setSettings}
+            onError={setError}
+            toast={toast}
+          />
+        )}
+        <footer className="footer">
+          Made for the moments worth keeping.
+          <span>VideoEdit · Clip studio</span>
+        </footer>
+      </main>
+      {(error || notice) && (
+        <div role="alert" className={"toast " + (error ? "error" : "")}>
+          <span>{error || notice}</span>
+          <button
+            aria-label="Dismiss"
+            onClick={() => {
+              setError("");
+              setNotice("");
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {importOpen && (
+        <div
+          className="modal-shade"
+          onClick={() => {
+            if (!busy) setImportOpen(false);
+          }}
+        >
+          <section className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-heading">
+              <div>
+                <span className="eyebrow">LET’S MAKE SOMETHING</span>
+                <h2>Import a video</h2>
+              </div>
+              <button
+                className="icon-button"
+                disabled={busy}
+                aria-label="Close"
+                onClick={() => setImportOpen(false)}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="tabs">
+              <button
+                className={tab === "url" ? "active" : ""}
+                onClick={() => setTab("url")}
+              >
+                <Link size={15} /> Video link
+              </button>
+              <button
+                className={tab === "upload" ? "active" : ""}
+                onClick={() => setTab("upload")}
+              >
+                <Upload size={15} /> Upload a file
+              </button>
+            </div>
+            {tab === "url" ? (
+              <form onSubmit={importURL}>
+                <label>
+                  Direct video URL
+                  <textarea
+                    required
+                    placeholder="https://example.com/video.mp4?token=…"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                  />
+                </label>
+                <p className="hint">
+                  Use a direct link to an MP4, MKV, or WebM file. Signed links
+                  keep all their query parameters.
+                </p>
+                <label>
+                  Project name <span className="muted">(optional)</span>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="A moment worth keeping"
+                    maxLength={120}
+                  />
+                </label>
+                <button className="primary wide" disabled={busy}>
+                  {busy ? (
+                    <LoaderCircle className="spin" size={18} />
+                  ) : (
+                    <Download size={18} />
+                  )}{" "}
+                  {busy ? "Adding…" : "Download & create project"}
+                </button>
+              </form>
+            ) : (
+              <label
+                className="dropzone"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!busy && e.dataTransfer.files[0])
+                    upload(e.dataTransfer.files[0]);
+                }}
+              >
+                <Upload size={30} />
+                <strong>
+                  {busy
+                    ? `Uploading · ${progress.toFixed(0)}%`
+                    : "Drop your video here"}
+                </strong>
+                <span>
+                  {busy ? "Keep this window open" : "or click to choose a file"}
+                </span>
+                <small>
+                  MP4, MKV, WebM · limited by available workspace storage
+                </small>
+                <input
+                  type="file"
+                  accept="video/*,.mkv"
+                  disabled={busy}
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) upload(e.target.files[0]);
+                  }}
+                />
+                {busy && (
+                  <div className="meter">
+                    <i style={{ width: `${progress}%` }} />
+                  </div>
+                )}
+              </label>
+            )}
+          </section>
+        </div>
+      )}
+      {openClip && (
+        <div className="modal-shade" onClick={() => setOpenClip(null)}>
+          <section
+            className="modal clip-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-heading">
+              <div>
+                <span className="eyebrow">
+                  {openClip.preview
+                    ? "ACTUAL RENDER PREVIEW"
+                    : "YOUR FINISHED CLIP"}
+                </span>
+                <h2>{openClip.name}</h2>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Close clip"
+                onClick={() => setOpenClip(null)}
+              >
+                <X />
+              </button>
+            </div>
+            <video
+              className="result-video"
+              src={`/api/media/clip/${openClip.id}`}
+              controls
+              autoPlay
+            />
+            <div className="result-meta">
+              {clock(openClip.metadata.duration)} · {openClip.metadata.width} ×{" "}
+              {openClip.metadata.height} · {size(openClip.metadata.size)}
+              <a
+                className="primary"
+                href={`/api/media/clip/${openClip.id}?download=true`}
+              >
+                <Download size={16} /> Download MP4
+              </a>
+            </div>
+            <div className="send-panel">
+              <h3>
+                <Send size={17} /> Send to Telegram
+              </h3>
+              {!settings?.telegram_status.connected ? (
+                <p>
+                  Connect your account in{" "}
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setOpenClip(null);
+                      setPage("settings");
+                    }}
+                  >
+                    Settings
+                  </button>{" "}
+                  to send clips.
+                </p>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    action(
+                      () =>
+                        api(
+                          `/clips/${openClip.id}/send`,
+                          json("POST", {
+                            destination: dest,
+                            caption,
+                            as_file: asFile,
+                          }),
+                        ),
+                      "Telegram upload queued. Track it in Activity.",
+                    );
+                  }}
+                >
+                  <label>
+                    Destination
+                    <select
+                      value={dest}
+                      onChange={(e) => setDest(e.target.value)}
+                    >
+                      {(destinations.length
+                        ? destinations
+                        : [{ id: "me", name: "Saved Messages" }]
+                      ).map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Caption
+                    <textarea
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      maxLength={1024}
+                      placeholder="Add a caption…"
+                    />
+                  </label>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={asFile}
+                      onChange={(e) => setAsFile(e.target.checked)}
+                    />{" "}
+                    Send as a file instead of a playable video
+                  </label>
+                  <button className="primary">
+                    <Send size={16} /> Send now
+                  </button>
+                </form>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }
-function Login({onLogin}:{onLogin:()=>void}){const [username,setUsername]=useState('admin'),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div className="login-screen"><div className="login-decoration"><div className="login-frame"><Scissors size={52}/></div><span className="eyebrow">YOUR PRIVATE CLIP STUDIO</span><h1>Good stories.<br/>Great little clips<span className="accent">.</span></h1><p>Find the moment. Shape the story. Share something worth watching.</p></div><form className="login-card" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await api('/login',json('POST',{username,password}));onLogin();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}><div className="brand"><span className="brand-mark"><Scissors size={21}/></span>videoedit.</div><h2>Welcome to your workspace</h2><p>Sign in to start creating.</p><label>Username<input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required/></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>{error&&<p role="alert" className="inline-error">{error}</p>}<button className="primary wide" disabled={busy}>{busy?<LoaderCircle className="spin" size={18}/>:<>Sign in <ArrowUpRight size={18}/></>}</button><small className="muted">Your media and edits stay in your private workspace.</small></form></div>;}
+function Login({ onLogin }: { onLogin: () => void }) {
+  const [username, setUsername] = useState("admin"),
+    [password, setPassword] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  return (
+    <div className="login-screen">
+      <div className="login-decoration">
+        <div className="login-frame">
+          <Scissors size={52} />
+        </div>
+        <span className="eyebrow">YOUR PRIVATE CLIP STUDIO</span>
+        <h1>
+          Good stories.
+          <br />
+          Great little clips<span className="accent">.</span>
+        </h1>
+        <p>Find the moment. Shape the story. Share something worth watching.</p>
+      </div>
+      <form
+        className="login-card"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          try {
+            await api("/login", json("POST", { username, password }));
+            onLogin();
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <div className="brand">
+          <span className="brand-mark">
+            <Scissors size={21} />
+          </span>
+          videoedit.
+        </div>
+        <h2>Welcome to your workspace</h2>
+        <p>Sign in to start creating.</p>
+        <label>
+          Username
+          <input
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+        {error && (
+          <p role="alert" className="inline-error">
+            {error}
+          </p>
+        )}
+        <button className="primary wide" disabled={busy}>
+          {busy ? (
+            <LoaderCircle className="spin" size={18} />
+          ) : (
+            <>
+              Sign in <ArrowUpRight size={18} />
+            </>
+          )}
+        </button>
+        <small className="muted">
+          Your media and edits stay in your private workspace.
+        </small>
+      </form>
+    </div>
+  );
+}

@@ -54,7 +54,7 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 6. Click **Render preview** to check up to six seconds of the actual output. Click **Render clip** for the full selected section. Results appear below the editor and in **Rendered clips**.
 7. Download the MP4, or open a clip and explicitly click **Send now** after connecting Telegram.
 
-Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
+Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge; the default 1920-pixel edge produces Full HD landscape or vertical clips. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
 
 ## Telegram
 
@@ -127,8 +127,8 @@ The editor provides a responsive approximation of libass captions. Original ASS 
 
 Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports.
 
-Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress; probing, proxy generation, rendering, network downloads, and Telegram uploads run as background jobs. Preview original-audio changes regenerate the proxy. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
+Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress and known-size requests; multipart files spool on the persistent data volume, and admission checks reserve space for the temporary copy. Probing, proxy generation, rendering, network downloads, and Telegram uploads run as background jobs. Preview original-audio changes regenerate the proxy. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
 
-Default storage capacity is 20 GB and a 1 GB free-space reserve. MP4/MKV/WebM sources and recognized image/audio file signatures are required. Signed URLs are encrypted in the job store and excluded from diagnostic responses. HTTP redirects and DNS answers are validated on every connection to prevent private-network requests; downloader requests never use environment proxies. FFmpeg is invoked with argument arrays and restricted local input protocols. Only trusted administrators should access an installation.
+Default storage capacity is 20 GB and a 1 GB free-space reserve. Rendering and previews also check available storage during processing. MP4/MKV/WebM sources and recognized image/audio file signatures are required. Signed URLs are encrypted in the job store and excluded from diagnostic responses. HTTP redirects and DNS answers are validated on every connection to prevent private-network requests; downloader requests never use environment proxies. FFmpeg is invoked with argument arrays and restricted local input protocols. Only trusted administrators should access an installation.
 
 See [SECURITY.md](SECURITY.md) for security reporting and deployment considerations. Licensed under [MIT](LICENSE).
