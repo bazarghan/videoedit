@@ -12,3 +12,6 @@ backups/
 .DS_Store
 
 *.tsbuildinfo
+
+compose.override.yaml
+deploy-local/

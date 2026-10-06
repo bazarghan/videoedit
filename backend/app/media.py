@@ -139,6 +139,9 @@ async def proxy(project, payload, ident):
     if meta['audio'] and audio_track >= len(meta['audio']):
         raise ValueError('That audio track does not exist.')
     dest = s.DATA / 'previews' / (project['id']+f'-a{audio_track}.mp4')
+    if dest.exists():
+        s.execute('UPDATE projects SET preview=?,status=? WHERE id=?',(str(dest),'ready',project['id']))
+        return
     temp = dest.with_suffix('.part.mp4')
     args = ['ffmpeg','-hide_banner','-v','error','-y','-i',project['source'],'-map','0:v:0']
     if meta['audio']:

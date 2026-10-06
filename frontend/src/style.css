@@ -7,3 +7,5 @@
 @media(max-width:430px){.sidebar{width:57px;padding:22px 6px}.main{margin-left:57px}.brand-mark{width:29px;height:29px}.nav-item{padding:15px 8px}.page{padding:23px 15px}.topbar{padding:0 15px}.topbar-right .live-dot,.topbar-right .avatar{display:none}.topbar-right{font-size:8px}.editor{padding:18px 10px}.editor-workspace{padding:10px}.preview-stage{height:300px}.output-frame{max-height:280px}.player-controls{gap:5px}.player-time{font-size:9px}.volume-slider{display:none}.timeline-ruler{font-size:6px}.timeline-bottom>span{display:none}.edit-controls{padding:22px 17px}.page-heading h1{font-size:29px}.page-heading>.primary{padding:10px 8px;gap:5px}.import-banner .secondary{margin-left:0;width:100%}.timeline-label{font-size:9px}.timeline-label strong{font-size:10px}}
 
 .preview-stage:fullscreen{width:100vw;height:100vh;border:0;border-radius:0;background:black}
+
+.color-field{display:flex;gap:5px;align-items:center}.color-field input[type=color]{width:32px!important;flex-shrink:0}.color-field input[type=text]{min-width:0;padding:9px 5px!important;font-size:10px!important}
