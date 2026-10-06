@@ -55,6 +55,8 @@ export type Metadata = {
   height: number;
   size: number;
   video_codec: string;
+  telegram_compatible?: boolean;
+  cover?: { time: number; mode: "auto" | "manual"; revision: string };
   audio: { index: number; codec: string; language: string; title: string }[];
   subtitles: unknown[];
 };
@@ -98,6 +100,7 @@ export type Clip = {
   metadata: Metadata;
   created: number;
   preview: boolean;
+  has_cover: boolean;
 };
 export type Settings = {
   telegram: {

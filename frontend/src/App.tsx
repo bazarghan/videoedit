@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Scissors,
   LayoutGrid,
@@ -35,6 +35,7 @@ import {
 import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
+import TelegramCover from "./TelegramCover";
 
 const emptyProxy: DownloadProxyDraft = {
   host: "",
@@ -52,6 +53,7 @@ const nav = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 export default function App() {
+  const resultVideo = useRef<HTMLVideoElement>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null),
     [page, setPage] = useState("projects"),
     [selected, setSelected] = useState("");
@@ -78,6 +80,18 @@ export default function App() {
       [],
     );
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
+  const coverPending =
+    !!openClip &&
+    jobs.some(
+      (job) =>
+        job.project_id === openClip.project_id &&
+        job.kind === "cover" &&
+        ["queued", "running"].includes(job.status),
+    );
+  useEffect(() => {
+    if (openClip)
+      setOpenClip(clips.find((clip) => clip.id === openClip.id) || openClip);
+  }, [clips, openClip?.id]);
   useEffect(() => {
     api("/me")
       .then(() => setAuthenticated(true))
@@ -482,6 +496,7 @@ export default function App() {
                               ingest: "Inspect video",
                               proxy: "Browser preview",
                               render: "Render clip",
+                              cover: "Telegram cover",
                               telegram: "Send to Telegram",
                             }[j.kind]
                           }
@@ -603,11 +618,18 @@ export default function App() {
                       className="project-thumb"
                       onClick={() => showClip(c)}
                     >
-                      <video
-                        src={`/api/media/clip/${c.id}#t=0.1`}
-                        preload="metadata"
-                        muted
-                      />
+                      {c.has_cover ? (
+                        <img
+                          src={`/api/media/clip/${c.id}/cover?v=${c.metadata.cover?.revision}`}
+                          alt="Video cover"
+                        />
+                      ) : (
+                        <video
+                          src={`/api/media/clip/${c.id}#t=0.1`}
+                          preload="metadata"
+                          muted
+                        />
+                      )}
                       <span className="thumb-play">
                         <Play size={22} fill="currentColor" />
                       </span>
@@ -827,8 +849,14 @@ export default function App() {
               </button>
             </div>
             <video
+              ref={resultVideo}
               className="result-video"
               src={`/api/media/clip/${openClip.id}`}
+              poster={
+                openClip.has_cover
+                  ? `/api/media/clip/${openClip.id}/cover?v=${openClip.metadata.cover?.revision}`
+                  : undefined
+              }
               controls
               autoPlay
             />
@@ -842,6 +870,14 @@ export default function App() {
                 <Download size={16} /> Download MP4
               </a>
             </div>
+            <TelegramCover
+              clip={openClip}
+              video={resultVideo}
+              jobs={jobs}
+              refresh={refresh}
+              toast={toast}
+              onError={setError}
+            />
             <div className="send-panel">
               <h3>
                 <Send size={17} /> Send to Telegram
@@ -911,7 +947,7 @@ export default function App() {
                     />{" "}
                     Send as a file instead of a playable video
                   </label>
-                  <button className="primary">
+                  <button className="primary" disabled={coverPending}>
                     <Send size={16} /> Send now
                   </button>
                 </form>

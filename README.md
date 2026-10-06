@@ -7,6 +7,7 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 ## Features
 
 - Direct HTTP/HTTPS downloads with complete signed URLs, optional SOCKS5 proxies, upload progress, cancellation, and actionable errors.
+- Telegram-ready MP4 exports with automatic video covers and manual frame selection from the finished clip.
 - Persistent projects and background jobs; one render at a time with three encoding threads.
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
 - Draggable trim handles, exact time fields, and cuts re-encoded for precision.
@@ -65,6 +66,12 @@ Passwords are encrypted and never returned to the browser. Leaving the password 
 Video hostnames are resolved and validated locally, then public IP addresses are sent through SOCKS5. Redirects use the same proxy and retain signed query parameters. HTTPS certificate verification and the original hostname are preserved. The proxy must be reachable from the application; in Docker, `localhost` refers to the application container. Remote proxy DNS (`socks5h`), proxy chains and HTTP proxies are not supported. These settings apply to URL imports, not Telegram uploads or browser playback.
 
 ## Telegram
+
+Exports use H.264 video with `yuv420p` pixels, AAC audio when present, and fast-start MP4 packaging. Each render is checked for compatibility and gets a cover from the finished video, including captions, crop and watermark. Muted clips are sent as playable videos rather than animated GIFs.
+
+Open a clip from **Rendered clips** or the editor's recent renders. Under **Telegram cover**, pause/scrub the video or enter **Preview frame (seconds)**, then click **Use current frame**. Choose **Automatic frame** to return to the default frame near the beginning. Cover changes do not require rendering the video again and apply to future sends. Existing exports receive automatic covers during startup. Wait for the cover job to finish before sending.
+
+Playable videos include both Telegram's dedicated video cover and a small JPEG thumbnail for client compatibility. **Send as a file** attaches the thumbnail and retains document behavior. A cover changes the video's poster, not its playback starting position. Telegram clients control how covers are displayed.
 
 Create an API application at [my.telegram.org](https://my.telegram.org/apps). In Settings, save your API ID, API hash, and phone number with country code, then click **Connect account**. Enter the code delivered by Telegram and the two-step verification password if requested.
 

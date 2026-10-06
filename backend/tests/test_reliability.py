@@ -1,6 +1,9 @@
 import asyncio
 import json
 import socket
+import subprocess
+from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -12,7 +15,7 @@ from app.network import PublicResolver
 from app.telegram import Telegram
 from app.workers import download
 from fastapi.testclient import TestClient
-from telethon import errors
+from telethon import errors, types, functions
 
 
 def test_dns_rebinding_rejected(monkeypatch):
@@ -109,6 +112,7 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
     from app import telegram as module
 
     calls = []
+    sent_media = []
 
     class Client:
         def __init__(self, *args, **kwargs):
@@ -146,7 +150,37 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
         async def get_input_entity(self, dest):
             return dest
 
+        async def upload_file(self, path, **kwargs):
+            assert Path(path).exists()
+            if kwargs.get("progress_callback"):
+                await kwargs["progress_callback"](
+                    Path(path).stat().st_size, Path(path).stat().st_size
+                )
+            calls.append(("upload", Path(path).suffix))
+            return types.InputFile(
+                id=123,
+                parts=1,
+                name=kwargs.get("file_name", Path(path).name),
+                md5_checksum="",
+            )
+
+        async def __call__(self, request):
+            assert isinstance(request, functions.messages.UploadMediaRequest)
+            assert isinstance(request.media, types.InputMediaUploadedPhoto)
+            calls.append(("register-cover", request.peer))
+            return types.MessageMediaPhoto(
+                photo=types.Photo(
+                    id=7,
+                    access_hash=8,
+                    file_reference=b"photo-ref",
+                    date=datetime.now(timezone.utc),
+                    sizes=[],
+                    dc_id=2,
+                )
+            )
+
         async def send_file(self, entity, path, **kwargs):
+            sent_media.append((path, kwargs))
             calls.append(("send", entity, kwargs["force_document"], kwargs["caption"]))
             await kwargs["progress_callback"](5, 10)
             await kwargs["progress_callback"](10, 10)
@@ -168,7 +202,26 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
     tg = Telegram()
     clip_id = s.uid()
     path = tmp_path / "clip.mp4"
-    path.write_bytes(b"video")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=320x180:r=30:d=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(path),
+        ],
+        check=True,
+    )
     s.execute(
         "INSERT INTO clips VALUES (?,?,?,?,?,?,?)",
         (
@@ -195,8 +248,32 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
         }
         ident = s.job("telegram", "test-project", payload)
         await tg.send(payload, ident)
+        document, options = sent_media[-1]
+        assert isinstance(document, types.InputMediaUploadedDocument)
+        assert document.video_cover.id == 7 and document.thumb.name.endswith(".jpg")
+        assert document.mime_type == "video/mp4" and document.nosound_video
+        assert (
+            document.video_timestamp is None
+        )  # Selecting a cover keeps playback at the beginning.
+        video = next(
+            attr
+            for attr in document.attributes
+            if isinstance(attr, types.DocumentAttributeVideo)
+        )
+        assert (
+            video.supports_streaming and video.nosound and video.video_codec == "h264"
+        )
+        assert video.w == 320 and video.h == 180 and video.duration == 1
+        assert options["parse_mode"] is None
         assert (
             s.one("SELECT progress FROM jobs WHERE id=?", (ident,))["progress"] == 100
+        )
+        await tg.send({**payload, "as_file": True}, ident)
+        document, options = sent_media[-1]
+        assert document == str(path) and options["force_document"]
+        assert (
+            options["thumb"].endswith(".jpg")
+            and Path(options["thumb"]).stat().st_size < 20 * 1024
         )
         s.update_job(ident, status="cancelled")
         with pytest.raises(Cancelled):
@@ -212,6 +289,8 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
     )
     assert calls[-1] == "logout"
     s.execute("DELETE FROM clips WHERE id=?", (clip_id,))
+    for path in (s.DATA / "renders").glob(clip_id + "-*.jpg"):
+        path.unlink(missing_ok=True)
     s.set_setting("telegram", {})
 
 

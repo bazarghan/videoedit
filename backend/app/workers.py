@@ -105,6 +105,15 @@ async def dispatch(job, payload):
         await media.ingest(project["id"], payload["path"], ident)
     elif job["kind"] == "proxy":
         await media.proxy(project, payload, ident)
+    elif job["kind"] == "cover":
+        clip = s.one(
+            "SELECT * FROM clips WHERE id=? AND project_id=?",
+            (payload["clip_id"], project["id"]),
+        )
+        if not clip:
+            raise ValueError("The rendered clip no longer exists.")
+        await media.update_cover(clip, payload.get("time"), ident)
+        s.update_job(ident, result_id=clip["id"])
     else:
         await media.render(project, payload, ident)
 

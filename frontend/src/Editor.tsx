@@ -923,8 +923,9 @@ export default function Editor({
                   </label>
                 </div>
                 <p className="hint">
-                  Resolution sets the longest edge. Exports use MP4, H.264
-                  video, and AAC audio with fast-start playback.
+                  Resolution sets the longest edge. Exports are Telegram-ready
+                  MP4 videos with fast-start playback and an automatic cover.
+                  Open the finished clip to choose a different cover frame.
                 </p>
                 <div className="source-info">
                   <span className="eyebrow">SOURCE VIDEO</span>

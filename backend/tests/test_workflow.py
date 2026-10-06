@@ -168,10 +168,46 @@ def test_complete_workflow(footage, tmp_path):
             and clip["metadata"]["audio"][0]["codec"] == "aac"
         )
         # Decode actual rendered audio: both the source tone and music must remain audible.
+        assert (
+            clip["metadata"]["pixel_format"] == "yuv420p"
+            and clip["metadata"]["telegram_compatible"]
+        )
+        assert clip["has_cover"] and clip["metadata"]["cover"]["mode"] == "auto"
+        cover = client.get(f"/api/media/clip/{clip['id']}/cover")
+        assert (
+            cover.status_code == 200 and cover.headers["content-type"] == "image/jpeg"
+        )
+        assert cover.content.startswith(b"\xff\xd8")
+        from app.media import cover_paths
+        import json
+
+        cover_files = cover_paths(
+            s.one("SELECT * FROM clips WHERE id=?", (clip["id"],))
+        )
+        thumbnail = json.loads(
+            subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_streams",
+                    "-of",
+                    "json",
+                    str(cover_files[1]),
+                ]
+            )
+        )["streams"][0]
+        assert max(thumbnail["width"], thumbnail["height"]) <= 320
+        assert cover_files[1].stat().st_size < 20 * 1024
         from array import array
         from math import cos, hypot, pi, sin
 
         clip_path = s.one("SELECT path FROM clips WHERE id=?", (clip["id"],))["path"]
+        # Fast-start MP4 places its metadata before the media payload.
+        from pathlib import Path
+
+        data = Path(clip_path).read_bytes()
+        assert data.find(b"moov") < data.find(b"mdat")
         pcm = subprocess.check_output(
             [
                 "ffmpeg",
@@ -228,6 +264,7 @@ def test_complete_workflow(footage, tmp_path):
         )
         client.post("/api/logout")
         assert client.get(f"/api/media/clip/{clip['id']}").status_code == 401
+        assert client.get(f"/api/media/clip/{clip['id']}/cover").status_code == 401
 
 
 @pytest.mark.parametrize(

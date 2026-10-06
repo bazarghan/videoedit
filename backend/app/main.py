@@ -18,6 +18,7 @@ from pwdlib import PasswordHash
 from . import media
 from . import store as s
 from .models import (
+    CoverSelection,
     Cue,
     DownloadProxyConfig,
     Edit,
@@ -53,9 +54,33 @@ async def lifespan(app):
         (time.time(),),
     )
     s.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
+    queued_covers = {
+        s.decrypt(row["payload"])["clip_id"]
+        for row in s.rows(
+            "SELECT payload FROM jobs WHERE kind='cover' AND status IN ('running','queued')"
+        )
+    }
+    for clip in s.rows("SELECT * FROM clips"):
+        paths = media.cover_paths(clip)
+        if (
+            Path(clip["path"]).exists()
+            and (not paths or not all(path.exists() for path in paths))
+            and clip["id"] not in queued_covers
+        ):
+            cover = json.loads(clip["metadata"]).get("cover", {})
+            s.job(
+                "cover",
+                clip["project_id"],
+                {
+                    "clip_id": clip["id"],
+                    "time": cover.get("time")
+                    if cover.get("mode") == "manual"
+                    else None,
+                },
+            )
     tasks = [
         asyncio.create_task(worker(("download", "ingest"))),
-        asyncio.create_task(worker(("proxy", "render"))),
+        asyncio.create_task(worker(("proxy", "render", "cover"))),
         asyncio.create_task(worker(("telegram",))),
     ]
     yield
@@ -555,6 +580,9 @@ async def retry_job(ident: str):
 
 
 def public_clip(row):
+    row["preview"] = bool(row["preview"])
+    paths = media.cover_paths(row)
+    row["has_cover"] = bool(paths) and all(path.exists() for path in paths)
     row.pop("path")
     row["metadata"] = json.loads(row["metadata"])
     return row
@@ -603,11 +631,42 @@ async def clip_media(ident: str, download: bool = False):
     )
 
 
+@app.get("/api/media/clip/{ident}/cover")
+async def clip_cover(ident: str):
+    row = s.one("SELECT * FROM clips WHERE id=?", (ident,))
+    paths = media.cover_paths(row) if row else ()
+    if not paths or not paths[0].exists():
+        raise HTTPException(404, "The cover is being prepared. Try again shortly.")
+    return FileResponse(paths[0], media_type="image/jpeg")
+
+
+@app.put("/api/clips/{ident}/cover")
+async def select_cover(ident: str, body: CoverSelection):
+    row = s.one("SELECT * FROM clips WHERE id=?", (ident,))
+    if not row:
+        raise HTTPException(404, "Clip not found.")
+    if body.time is not None and body.time >= json.loads(row["metadata"])["duration"]:
+        raise ValueError("Choose a cover frame inside the rendered clip.")
+    require_idle(row["project_id"])
+    return {
+        "job_id": s.job(
+            "cover", row["project_id"], {"clip_id": ident, "time": body.time}
+        )
+    }
+
+
 @app.post("/api/clips/{ident}/send")
 async def send_clip(ident: str, body: SendClip):
     row = s.one("SELECT * FROM clips WHERE id=?", (ident,))
     if not row:
         raise HTTPException(404, "Clip not found.")
+    if s.one(
+        "SELECT id FROM jobs WHERE kind='cover' AND project_id=? AND status IN ('running','queued')",
+        (row["project_id"],),
+    ):
+        raise HTTPException(
+            409, "Wait for the cover to finish before sending this clip."
+        )
     status = await telegram.status()
     if not status["connected"]:
         raise ValueError("Connect your Telegram account in Settings first.")
@@ -651,6 +710,8 @@ async def delete_clip(ident: str):
         raise HTTPException(404, "Clip not found.")
     require_idle(row["project_id"])
     Path(row["path"]).unlink(missing_ok=True)
+    for path in media.cover_paths(row):
+        path.unlink(missing_ok=True)
     s.execute("DELETE FROM clips WHERE id=?", (ident,))
     return {"ok": True}
 
@@ -665,7 +726,9 @@ async def delete_project(ident: str):
         for r in s.rows("SELECT path FROM assets WHERE project_id=?", (ident,))
     ]
     paths += [
-        r["path"] for r in s.rows("SELECT path FROM clips WHERE project_id=?", (ident,))
+        str(path)
+        for clip in s.rows("SELECT * FROM clips WHERE project_id=?", (ident,))
+        for path in (Path(clip["path"]), *media.cover_paths(clip))
     ]
     paths += [
         r["ass_path"]

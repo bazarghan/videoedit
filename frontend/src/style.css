@@ -976,6 +976,46 @@ label.check {
 .clip-modal {
   width: 760px;
 }
+.telegram-cover {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 20px;
+}
+.telegram-cover h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.cover-picker {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.cover-image {
+  height: 150px;
+  background: #10141c;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cover-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.cover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.cover-settings label {
+  margin: 12px 0;
+}
 .result-video {
   width: 100%;
   max-height: 380px;

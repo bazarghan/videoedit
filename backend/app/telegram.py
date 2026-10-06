@@ -4,11 +4,18 @@ import asyncio
 import json
 import time
 
-from telethon import TelegramClient, errors, types
+from telethon import TelegramClient, errors, functions, types, utils
 from telethon.sessions import StringSession
 
 from . import store as s
-from .media import Cancelled, cancelled
+from .media import (
+    Cancelled,
+    cancelled,
+    cover_paths,
+    probe,
+    telegram_compatible,
+    update_cover,
+)
 
 
 class Telegram:
@@ -141,6 +148,8 @@ class Telegram:
         return result
 
     async def send(self, payload, ident):
+        if cancelled(ident):
+            raise Cancelled()
         client = await self.get()
         if not await client.is_user_authorized():
             raise ValueError(
@@ -174,29 +183,74 @@ class Telegram:
             )
 
         info = json.loads(clip["metadata"])
+        if not info.get("pixel_format"):
+            info = {**info, **await probe(clip["path"])}
+        if not payload["as_file"] and not telegram_compatible(info):
+            raise ValueError(
+                "Render this clip again as a Telegram-compatible MP4 before sending it as a video."
+            )
+        paths = cover_paths(clip)
+        if not paths or not all(path.exists() for path in paths):
+            info = await update_cover(clip, ident=ident)
+            paths = cover_paths({**clip, "metadata": info})
+
+        async def check_cancel(*args):
+            if cancelled(ident):
+                raise Cancelled()
+
+        attributes = [types.DocumentAttributeFilename(clip["name"])]
+        file = clip["path"]
+        if not payload["as_file"]:
+            attributes.append(
+                types.DocumentAttributeVideo(
+                    duration=info["duration"],
+                    w=info["width"],
+                    h=info["height"],
+                    supports_streaming=True,
+                    nosound=not bool(info["audio"]),
+                    video_codec="h264",
+                )
+            )
+            video = await client.upload_file(
+                file, file_name=clip["name"], progress_callback=progress
+            )
+            thumbnail = await client.upload_file(
+                str(paths[1]), progress_callback=check_cancel
+            )
+            image = await client.upload_file(
+                str(paths[0]), progress_callback=check_cancel
+            )
+            photo = await client(
+                functions.messages.UploadMediaRequest(
+                    peer=entity,
+                    media=types.InputMediaUploadedPhoto(file=image),
+                )
+            )
+            await check_cancel()
+            file = types.InputMediaUploadedDocument(
+                file=video,
+                mime_type="video/mp4",
+                attributes=attributes,
+                thumb=thumbnail,
+                video_cover=utils.get_input_photo(photo.photo),
+                nosound_video=not bool(info["audio"]),
+            )
+        # Covers are uploaded as media, without posting a separate photo message.
         # Text is sent literally; Telegram markup is never interpreted.
+        await check_cancel()
         await client.send_file(
             entity,
-            clip["path"],
+            file,
             caption=payload["caption"],
             force_document=payload["as_file"],
             supports_streaming=not payload["as_file"],
             parse_mode=None,
             progress_callback=progress,
-            attributes=[
-                types.DocumentAttributeFilename(clip["name"]),
-                types.DocumentAttributeVideo(
-                    duration=round(info["duration"]),
-                    w=info["width"],
-                    h=info["height"],
-                    supports_streaming=True,
-                ),
-            ]
-            if not payload["as_file"]
-            else [types.DocumentAttributeFilename(clip["name"])],
+            attributes=attributes,
+            thumb=str(paths[1]) if payload["as_file"] else None,
         )
         await self.save_session()
-        s.update_job(ident, result_id=clip["id"])
+        s.update_job(ident, result_id=clip["id"], progress=100)
 
 
 def error_message(exc):

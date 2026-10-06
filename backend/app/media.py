@@ -3,6 +3,7 @@ import json
 import re
 import time
 from pathlib import Path
+from fractions import Fraction
 
 import pysubs2
 
@@ -139,6 +140,13 @@ async def probe(path):
         "width": width,
         "height": height,
         "video_codec": video.get("codec_name") if video else None,
+        "pixel_format": video.get("pix_fmt") if video else None,
+        "video_duration": float(
+            (video or {}).get("duration") or data.get("format", {}).get("duration", 0)
+        ),
+        "fps": float(Fraction((video or {}).get("avg_frame_rate") or "0/1"))
+        if (video or {}).get("avg_frame_rate") != "0/0"
+        else 0,
         "format": data.get("format", {}).get("format_name", ""),
         "audio": [track(st) for st in audio],
         "subtitles": [
@@ -147,6 +155,112 @@ async def probe(path):
             if st["codec_type"] == "subtitle"
         ],
     }
+
+
+def telegram_compatible(info):
+    return (
+        info.get("video_codec") == "h264"
+        and info.get("pixel_format") == "yuv420p"
+        and "mp4" in info.get("format", "").split(",")
+        and all(track["codec"] == "aac" for track in info.get("audio", []))
+        and info.get("width", 0) > 0
+        and info.get("height", 0) > 0
+        and not info["width"] % 2
+        and not info["height"] % 2
+    )
+
+
+def cover_paths(clip):
+    info = (
+        json.loads(clip["metadata"])
+        if isinstance(clip["metadata"], str)
+        else clip["metadata"]
+    )
+    revision = info.get("cover", {}).get("revision", "")
+    if not re.fullmatch(r"[0-9a-f]{32}", revision):
+        return ()
+    return tuple(
+        s.DATA / "renders" / f"{clip['id']}-{revision}-{kind}.jpg"
+        for kind in ("cover", "thumb")
+    )
+
+
+async def make_cover(clip, info, timestamp=None, ident=None):
+    duration = min(info["duration"], info.get("video_duration") or info["duration"])
+    if timestamp is not None and not 0 <= timestamp < info["duration"]:
+        raise ValueError("Choose a cover frame inside the rendered clip.")
+    # Seek no later than the last decodable frame, including very short clips.
+    position = min(1, duration / 2) if timestamp is None else timestamp
+    position = min(position, max(0, duration - 1 / max(1, info.get("fps", 30))))
+    revision = s.uid()
+    result = {
+        "time": position,
+        "mode": "auto" if timestamp is None else "manual",
+        "revision": revision,
+    }
+    paths = cover_paths({**clip, "metadata": {**info, "cover": result}})
+    s.space_for(2 * 1024**2)
+    try:
+        for path, edge in zip(paths, (1280, 320)):
+            for quality in (6, 12, 20, 31):
+                await run(
+                    [
+                        "ffmpeg",
+                        "-v",
+                        "error",
+                        "-y",
+                        "-ss",
+                        str(position),
+                        "-i",
+                        clip["path"],
+                        "-frames:v",
+                        "1",
+                        "-vf",
+                        f"scale='min({edge},iw)':'min({edge},ih)':force_original_aspect_ratio=decrease,setsar=1",
+                        "-q:v",
+                        str(quality),
+                        "-threads",
+                        "1",
+                        str(path),
+                    ],
+                    ident,
+                )
+                if not path.exists() or not path.stat().st_size:
+                    raise ValueError(
+                        "The selected video frame could not be decoded. Choose an earlier frame."
+                    )
+                if edge != 320 or path.stat().st_size < 20 * 1024:
+                    break
+            else:
+                raise ValueError(
+                    "The cover thumbnail could not be reduced to Telegram's supported size."
+                )
+        return result
+    except BaseException:
+        for path in paths:
+            path.unlink(missing_ok=True)
+        raise
+
+
+async def update_cover(clip, timestamp=None, ident=None):
+    info = json.loads(clip["metadata"])
+    if not info.get("pixel_format"):
+        info = {**info, **await probe(clip["path"])}
+    previous = cover_paths(clip)
+    cover = await make_cover(clip, info, timestamp, ident)
+    paths = cover_paths({**clip, "metadata": {**info, "cover": cover}})
+    try:
+        info.update(cover=cover, telegram_compatible=telegram_compatible(info))
+        s.execute(
+            "UPDATE clips SET metadata=? WHERE id=?", (json.dumps(info), clip["id"])
+        )
+    except BaseException:
+        for path in paths:
+            path.unlink(missing_ok=True)
+        raise
+    for path in previous:
+        path.unlink(missing_ok=True)
+    return info
 
 
 async def add_subtitle(
@@ -587,6 +701,14 @@ async def render(project, payload, ident):
     try:
         await run(args, ident, duration)
         info = await probe(dest)
+        if not telegram_compatible(info):
+            raise ValueError(
+                "The export could not be verified as a Telegram-compatible MP4. Render it again."
+            )
+        info["telegram_compatible"] = True
+        info["cover"] = await make_cover(
+            {"id": clip_id, "path": str(dest)}, info, ident=ident
+        )
         name = re.sub(r"[^\w\- .]", "", edit.filename).strip(" .") or "clip"
         if preview:
             name += "-preview"
@@ -605,6 +727,8 @@ async def render(project, payload, ident):
         s.update_job(ident, result_id=clip_id)
     except BaseException:
         dest.unlink(missing_ok=True)
+        for path in (s.DATA / "renders").glob(clip_id + "-*.jpg"):
+            path.unlink(missing_ok=True)
         raise
     finally:
         import shutil

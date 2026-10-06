@@ -167,6 +167,10 @@ class SendClip(Strict):
     as_file: bool = False
 
 
+class CoverSelection(Strict):
+    time: float | None = Field(default=None, ge=0)
+
+
 class StorageConfig(Strict):
     limit_gb: int = Field(ge=2, le=10000)
 
