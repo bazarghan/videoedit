@@ -174,13 +174,14 @@ export function clock(seconds: number = 0) {
   const s = Math.max(0, seconds);
   return `${Math.floor(s / 3600) ? Math.floor(s / 3600) + ":" : ""}${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 }
-export const fonts = [
-  "Vazirmatn",
-  "Shabnam",
-  "Sahel",
-  "DejaVu Sans",
-  "DejaVu Serif",
-  "Liberation Sans",
-  "Liberation Serif",
-  "Noto Sans Arabic",
+export const fonts: [string, string][] = [
+  ["Vazirmatn", "Vazirmatn"],
+  ["Shabnam", "Shabnam"],
+  ["Sahel", "Sahel"],
+  ["IRANYekanWeb", "IRAN Yekan"],
+  ["DejaVu Sans", "DejaVu Sans"],
+  ["DejaVu Serif", "DejaVu Serif"],
+  ["Liberation Sans", "Liberation Sans"],
+  ["Liberation Serif", "Liberation Serif"],
+  ["Noto Sans Arabic", "Noto Sans Arabic"],
 ];

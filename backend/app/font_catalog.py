@@ -11,6 +11,7 @@ FontFamily = Literal[
     "Vazirmatn",
     "Shabnam",
     "Sahel",
+    "IRANYekanWeb",
 ]
 
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
@@ -18,6 +19,7 @@ BUNDLED_FONTS = {
     "Vazirmatn": FONT_DIR / "Vazirmatn-Regular.ttf",
     "Shabnam": FONT_DIR / "Shabnam.ttf",
     "Sahel": FONT_DIR / "Sahel.ttf",
+    "IRANYekanWeb": FONT_DIR / "IRANYekanWebRegular.ttf",
 }
 FONT_SLUGS = {
     "sans": "DejaVu Sans",
@@ -28,6 +30,7 @@ FONT_SLUGS = {
     "vazirmatn": "Vazirmatn",
     "shabnam": "Shabnam",
     "sahel": "Sahel",
+    "iranyekanweb": "IRANYekanWeb",
 }
 
 

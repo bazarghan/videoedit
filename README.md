@@ -12,7 +12,7 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
 - Draggable trim handles, exact time fields, and cuts re-encoded for precision.
 - Embedded and external SRT, ASS/SSA, and WebVTT text subtitles, cue editing, timing offsets, font/color/outline/shadow controls, background boxes, alignment, and margins.
-- Bundled Vazirmatn, Shabnam, and Sahel Persian fonts for captions and text watermarks, with the same font files used in browser previews and exports.
+- Bundled Vazirmatn, Shabnam, Sahel, and IRAN Yekan (IRANYekanWeb) Persian fonts for captions and text watermarks, with the same font files used in browser previews and exports.
 - Original, landscape, vertical, square, and portrait frames with fit/fill and visual positioning.
 - Text and PNG/JPEG watermarks, drag positioning, corner presets, opacity, and timed visibility.
 - Original audio selection and volume, mute, background music, looping, and fades.

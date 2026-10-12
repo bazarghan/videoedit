@@ -10,7 +10,7 @@ from app.media import filter_path
 from app.models import Edit
 
 
-@pytest.mark.parametrize("family", ["Vazirmatn", "Shabnam", "Sahel"])
+@pytest.mark.parametrize("family", ["Vazirmatn", "Shabnam", "Sahel", "IRANYekanWeb"])
 def test_persian_font_preview_and_render(family, tmp_path):
     path = BUNDLED_FONTS[family]
     assert asyncio.run(font_path(family)) == path

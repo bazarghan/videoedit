@@ -1,0 +1,15 @@
+IRANYekanWebRegular.ttf
+Copyright (c) 2019 by www.fontiran.com (Moslem Ebrahimi). All rights reserved.
+
+IRANYekan is a trademark of www.fontiran.com (Moslem Ebrahimi).
+Manufacturer: www.fontiran.com (Moslem Ebrahimi)
+Designer: Moslem Ebrahimi
+Vendor URL: https://www.fontiran.com
+License URL: https://www.fontiran.com/licenses
+
+The font's embedded license metadata states: "Copyright (c) 2019 by
+http://www.fontiran.com All Rights Reserved."
+
+This is a proprietary font, not an open-source license. Confirm that you have
+the right to redistribute it before publishing a build that bundles this file.
+No separate license file was supplied with the font used here.

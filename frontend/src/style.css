@@ -33,6 +33,11 @@
   src: url("/api/fonts/sahel") format("truetype");
   font-display: swap;
 }
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/api/fonts/iranyekanweb") format("truetype");
+  font-display: swap;
+}
 :root {
   font-family:
     Inter,

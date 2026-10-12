@@ -1031,7 +1031,7 @@ export default function Editor({
                   Font family
                   <Select
                     value={style.font}
-                    options={fonts.map((f) => [f, f])}
+                    options={fonts}
                     onChange={(v) => update("subtitles", "font", v)}
                   />
                 </label>
@@ -1404,7 +1404,7 @@ export default function Editor({
                       Font
                       <Select
                         value={wm.font}
-                        options={fonts.map((f) => [f, f])}
+                        options={fonts}
                         onChange={(v) => update("watermark", "font", v)}
                       />
                     </label>
