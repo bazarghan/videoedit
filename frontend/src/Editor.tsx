@@ -66,6 +66,7 @@ export default function Editor({
     [frameWidth, setFrameWidth] = useState(800),
     [cropDrag, setCropDrag] = useState(false),
     [busy, setBusy] = useState(false),
+    [forcePreview, setForcePreview] = useState(false),
     [stageHeight, setStageHeight] = useState(450),
     [wmBox, setWmBox] = useState({ width: 100, height: 30 }),
     [cuePage, setCuePage] = useState(0);
@@ -81,6 +82,17 @@ export default function Editor({
     (j) => j.project_id === id && ["queued", "running"].includes(j.status),
   );
   const complete = !!project?.metadata.duration;
+  const sourceType = project?.source_playback_type;
+  const useOriginal = !!(
+    sourceType &&
+    !forcePreview &&
+    edit?.audio.track === 0 &&
+    document.createElement("video").canPlayType(sourceType)
+  );
+  const cachedPlayback = !!(
+    project?.has_preview && project.preview_audio_track === edit?.audio.track
+  );
+  const playbackReady = useOriginal || cachedPlayback;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
     if (!edit) return;
     setSavingDefaults(true);
@@ -105,6 +117,7 @@ export default function Editor({
     setProject(null);
     setEdit(null);
     lastProxy.current = "";
+    setForcePreview(false);
     setCues([]);
     setSaved(false);
     setTime(0);
@@ -117,8 +130,7 @@ export default function Editor({
       .catch((e) => onError(e.message));
   }, [id]);
   useEffect(() => {
-    if (!project || (project.has_preview && complete && active.length === 0))
-      return;
+    if (!project || (playbackReady && complete && active.length === 0)) return;
     const t = setInterval(
       () =>
         api<Project>(`/projects/${id}`)
@@ -130,7 +142,24 @@ export default function Editor({
       2000,
     );
     return () => clearInterval(t);
-  }, [id, project?.has_preview, complete, active.length]);
+  }, [id, playbackReady, complete, active.length]);
+  useEffect(() => {
+    if (!complete || !edit || !project?.has_source || playbackReady) return;
+    const key = `${id}:${edit.audio.track}:${forcePreview}`;
+    if (lastProxy.current === key) return;
+    lastProxy.current = key;
+    api(
+      `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
+      json("POST"),
+    ).catch((e) => onError(e.message));
+  }, [
+    id,
+    complete,
+    edit?.audio.track,
+    project?.has_source,
+    playbackReady,
+    forcePreview,
+  ]);
   useEffect(() => {
     if (!edit || !complete) return;
     setSaved(false);
@@ -547,16 +576,38 @@ export default function Editor({
               }}
               onPointerDown={(e) => dragFrame(e, "crop")}
             >
-              {project.has_preview ? (
+              {playbackReady ? (
                 <video
                   ref={video}
-                  key={project.id}
-                  src={`/api/media/project/${id}/preview?v=${jobs.filter((j) => j.kind === "proxy" && j.project_id === id && j.status === "completed").length}`}
+                  key={`${project.id}:${edit.audio.track}:${useOriginal}`}
+                  src={`/api/media/project/${id}/preview?audio_track=${edit.audio.track}&force_preview=${!useOriginal}&v=${jobs.filter((j) => j.kind === "proxy" && j.project_id === id && j.status === "completed").length}`}
                   style={{
                     objectFit: edit.crop.mode === "fit" ? "contain" : "cover",
                     objectPosition: `${edit.crop.x * 100}% ${edit.crop.y * 100}%`,
                   }}
                   playsInline
+                  onLoadedMetadata={(e) => {
+                    const player = e.currentTarget;
+                    player.volume = Math.min(1, volume * edit.audio.volume);
+                    player.muted = edit.audio.mute;
+                    player.playbackRate = speed;
+                    player.currentTime = Math.min(time, player.duration);
+                    for (let i = 0; i < player.textTracks.length; i++) {
+                      player.textTracks[i].mode = "disabled";
+                    }
+                  }}
+                  onError={(e) => {
+                    const code = e.currentTarget.error?.code;
+                    if (useOriginal && (code === 3 || code === 4)) {
+                      setPlaying(false);
+                      setForcePreview(true);
+                      toast("Preparing a compatible preview for this browser.");
+                    } else {
+                      onError(
+                        "Video playback failed. Reload the project to try again.",
+                      );
+                    }
+                  }}
                   onTimeUpdate={(e) => {
                     const t = e.currentTarget.currentTime;
                     if (loop && (t >= edit.end || t < edit.start)) {
@@ -576,7 +627,10 @@ export default function Editor({
                     <button
                       className="secondary"
                       onClick={() =>
-                        api(`/projects/${id}/preview`, json("POST"))
+                        api(
+                          `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
+                          json("POST"),
+                        )
                           .then(() => toast("Browser preview queued."))
                           .catch((e) => onError(e.message))
                       }
@@ -668,7 +722,7 @@ export default function Editor({
             <button
               className="icon-button"
               aria-label={playing ? "Pause" : "Play"}
-              disabled={!project.has_preview}
+              disabled={!playbackReady}
               onClick={toggle}
             >
               {playing ? <Pause size={21} /> : <Play size={21} />}
@@ -1565,16 +1619,6 @@ export default function Editor({
                     ])}
                     onChange={(v) => {
                       update("audio", "track", Number(v));
-                      api(
-                        `/projects/${id}/preview?audio_track=${v}`,
-                        json("POST"),
-                      )
-                        .then(() =>
-                          toast(
-                            "Browser preview queued with the selected audio track.",
-                          ),
-                        )
-                        .catch((e) => onError(e.message));
                     }}
                   />
                 </label>

@@ -2,7 +2,7 @@
 
 A private, self-hosted clip studio. Import a video, choose a moment, shape the frame, style the captions, and export a finished MP4. Send an export through your own Telegram account when you choose.
 
-Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering and creates cached H.264/AAC browser previews for MP4, MKV, and WebM inputs, including HEVC and embedded text subtitles.
+Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Compatible MP4 and WebM files play directly; other inputs receive cached H.264/AAC browser previews. If the current browser cannot decode a compatible source, VideoEdit automatically generates a fallback preview. Embedded text subtitles remain editable in either mode.
 
 ## Features
 
@@ -143,7 +143,7 @@ A single FastAPI process owns persistent SQLite queues and three background lane
 
 The editor provides a responsive approximation of libass captions. Original ASS styles, animated effects, complex shaping, outline rendering, and background boxes can differ from the browser overlay; rendered previews provide the exact output. With **Preserve original ASS styling** enabled, original ASS events and styles are used, so custom cue edits and uniform style controls apply only when that option is disabled.
 
-Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports.
+Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Single-track H.264/AAC MP4 and VP8/VP9 WebM files can play directly without extra video storage. HEVC MP4 playback depends on the browser; unsupported browsers generate a fallback preview. MKV files and sources with multiple audio tracks receive generated previews. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports.
 
 Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress and known-size requests; multipart files spool on the persistent data volume, and admission checks reserve space for the temporary copy. Probing, proxy generation, rendering, network downloads, and Telegram uploads run as background jobs. Preview original-audio changes regenerate the proxy. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
 

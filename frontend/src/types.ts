@@ -73,6 +73,8 @@ export type Project = {
   edit: Edit;
   has_source: boolean;
   has_preview: boolean;
+  preview_audio_track: number;
+  source_playback_type: string | null;
   has_thumbnail: boolean;
   subtitles?: {
     id: string;

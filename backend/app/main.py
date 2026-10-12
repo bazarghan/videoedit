@@ -63,6 +63,20 @@ async def lifespan(app):
         (time.time(),),
     )
     s.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
+    # Backfill existing imports so they also qualify for direct browser playback.
+    for row in s.rows(
+        "SELECT id,source,metadata FROM projects WHERE source IS NOT NULL"
+    ):
+        metadata = json.loads(row["metadata"])
+        if "browser_container" not in metadata and Path(row["source"]).is_file():
+            try:
+                metadata.update(await media.probe(row["source"]))
+            except ValueError:
+                continue
+            s.execute(
+                "UPDATE projects SET metadata=? WHERE id=?",
+                (json.dumps(metadata), row["id"]),
+            )
     queued_covers = {
         s.decrypt(row["payload"])["clip_id"]
         for row in s.rows(
@@ -263,11 +277,18 @@ def project(ident):
 
 
 def public_project(row):
+    metadata = json.loads(row["metadata"])
+    edit = json.loads(row["edit"])
+    audio_track = edit.get("audio", {}).get("track", 0)
     return {k: row[k] for k in ("id", "name", "status", "created")} | {
-        "metadata": json.loads(row["metadata"]),
-        "edit": json.loads(row["edit"]),
+        "metadata": metadata,
+        "edit": edit,
         "has_source": bool(row["source"]),
-        "has_preview": bool(row["preview"]),
+        "has_preview": media.cached_preview(row, audio_track) is not None,
+        "preview_audio_track": audio_track,
+        "source_playback_type": media.browser_source_type(metadata)
+        if row["source"]
+        else None,
         "has_thumbnail": bool(row["thumbnail"]),
     }
 
@@ -431,7 +452,7 @@ async def render_project(ident: str, body: Edit, preview: bool = False):
 
 
 @app.post("/api/projects/{ident}/preview")
-async def create_proxy(ident: str, audio_track: int = 0):
+async def create_proxy(ident: str, audio_track: int = 0, force: bool = False):
     row = project(ident)
     if not row["source"]:
         raise ValueError("The source is no longer available.")
@@ -439,14 +460,30 @@ async def create_proxy(ident: str, audio_track: int = 0):
         1, len(json.loads(row["metadata"]).get("audio", []))
     ):
         raise ValueError("Choose a valid audio track.")
-    active = s.one(
-        "SELECT id FROM jobs WHERE project_id=? AND kind='proxy' AND status IN ('queued','running')",
-        (ident,),
+    metadata = json.loads(row["metadata"])
+    if not force and media.browser_source_type(metadata, audio_track):
+        return {"job_id": None, "direct": True}
+    if media.cached_preview(row, audio_track):
+        return {"job_id": None, "direct": False}
+    active = next(
+        (
+            job
+            for job in s.rows(
+                "SELECT id,payload FROM jobs WHERE project_id=? AND kind='proxy' AND status IN ('queued','running')",
+                (ident,),
+            )
+            if s.decrypt(job["payload"]).get("audio_track", 0) == audio_track
+            and (
+                not media.browser_source_type(metadata, audio_track)
+                or s.decrypt(job["payload"]).get("force")
+            )
+        ),
+        None,
     )
     return {
         "job_id": active["id"]
         if active
-        else s.job("proxy", ident, {"audio_track": audio_track})
+        else s.job("proxy", ident, {"audio_track": audio_track, "force": force})
     }
 
 
@@ -607,21 +644,30 @@ async def clips():
 
 
 @app.get("/api/media/project/{ident}/{kind}")
-async def project_media(ident: str, kind: str):
+async def project_media(
+    ident: str, kind: str, audio_track: int = 0, force_preview: bool = False
+):
     row = project(ident)
-    if kind not in ("source", "preview", "thumbnail") or not row.get(kind):
+    if kind not in ("source", "preview", "thumbnail"):
         raise HTTPException(404, "This media is not available yet.")
-    path = Path(row[kind])
+    media_type = "image/jpeg" if kind == "thumbnail" else "application/octet-stream"
+    if kind == "preview":
+        direct_type = media.browser_source_type(
+            json.loads(row["metadata"]), audio_track
+        )
+        if row["source"] and direct_type and not force_preview:
+            path = Path(row["source"])
+            media_type = direct_type.split(";", 1)[0]
+        else:
+            path = media.cached_preview(row, audio_track)
+            media_type = "video/mp4"
+    else:
+        path = Path(row[kind]) if row[kind] else None
+    if path is None:
+        raise HTTPException(404, "This media is not available yet.")
     if not path.exists():
         raise HTTPException(404, "This media file is no longer available.")
-    return FileResponse(
-        path,
-        media_type="image/jpeg"
-        if kind == "thumbnail"
-        else "video/mp4"
-        if kind == "preview"
-        else "application/octet-stream",
-    )
+    return FileResponse(path, media_type=media_type)
 
 
 @app.get("/api/media/asset/{ident}")

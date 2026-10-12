@@ -135,6 +135,17 @@ async def probe(path):
     )
     if round(abs(float(rotation))) % 180 == 90:
         width, height = height, width
+    with Path(path).open("rb") as source:
+        header = source.read(256)
+    formats = data.get("format", {}).get("format_name", "").split(",")
+    brand = data.get("format", {}).get("tags", {}).get("major_brand", "")
+    container = (
+        "mp4"
+        if "mp4" in formats and brand.strip() != "qt"
+        else "webm"
+        if header.startswith(b"\x1aE\xdf\xa3") and b"\x42\x82\x84webm" in header
+        else None
+    )
     return {
         "duration": float(data.get("format", {}).get("duration", 0)),
         "size": Path(path).stat().st_size,
@@ -142,6 +153,8 @@ async def probe(path):
         "height": height,
         "video_codec": video.get("codec_name") if video else None,
         "pixel_format": video.get("pix_fmt") if video else None,
+        "browser_container": container,
+        "video_codec_tag": video.get("codec_tag_string") if video else None,
         "video_duration": float(
             (video or {}).get("duration") or data.get("format", {}).get("duration", 0)
         ),
@@ -156,6 +169,42 @@ async def probe(path):
             if st["codec_type"] == "subtitle"
         ],
     }
+
+
+def browser_source_type(info, audio_track=0):
+    # Browsers choose their own audio track; use a generated single-track preview
+    # whenever the source has multiple tracks or another track was selected.
+    audio = info.get("audio", [])
+    if audio_track != 0 or len(audio) > 1:
+        return None
+    codec = info.get("video_codec")
+    pixel = info.get("pixel_format")
+    if info.get("browser_container") == "mp4":
+        if audio and audio[0]["codec"] != "aac":
+            return None
+        if codec == "h264" and pixel in ("yuv420p", "yuvj420p"):
+            video = "avc1"
+        elif codec == "hevc" and pixel in ("yuv420p", "yuv420p10le"):
+            video = info.get("video_codec_tag")
+            if video not in ("hvc1", "hev1"):
+                return None
+        else:
+            return None
+        codecs = [video] + (["mp4a.40.2"] if audio else [])
+        return 'video/mp4; codecs="' + ", ".join(codecs) + '"'
+    if info.get("browser_container") == "webm":
+        if codec not in ("vp8", "vp9") or pixel != "yuv420p":
+            return None
+        if audio and audio[0]["codec"] not in ("opus", "vorbis"):
+            return None
+        codecs = [codec] + ([audio[0]["codec"]] if audio else [])
+        return 'video/webm; codecs="' + ", ".join(codecs) + '"'
+    return None
+
+
+def cached_preview(project, audio_track=0):
+    path = s.DATA / "previews" / (project["id"] + f"-a{audio_track}.mp4")
+    return path if path.is_file() else None
 
 
 def telegram_compatible(info):
@@ -386,7 +435,10 @@ async def ingest(project_id, path, ident):
         )
     except ValueError:
         pass
-    s.job("proxy", project_id, {"audio_track": 0})
+    if browser_source_type(meta):
+        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project_id,))
+    else:
+        s.job("proxy", project_id, {"audio_track": 0})
 
 
 async def proxy(project, payload, ident):
@@ -394,6 +446,9 @@ async def proxy(project, payload, ident):
     audio_track = int(payload.get("audio_track", 0))
     if meta["audio"] and audio_track >= len(meta["audio"]):
         raise ValueError("That audio track does not exist.")
+    if not payload.get("force") and browser_source_type(meta, audio_track):
+        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project["id"],))
+        return
     dest = s.DATA / "previews" / (project["id"] + f"-a{audio_track}.mp4")
     if dest.exists():
         s.execute(
