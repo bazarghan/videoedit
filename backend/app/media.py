@@ -355,7 +355,9 @@ async def ingest(project_id, path, ident):
     tracks = s.rows(
         "SELECT id FROM subtitles WHERE project_id=? AND editable=1", (project_id,)
     )
-    edit = Edit(end=meta["duration"]).model_dump()
+    row = s.one("SELECT edit FROM projects WHERE id=?", (project_id,))
+    edit = Edit.model_validate(json.loads(row["edit"])).model_dump()
+    edit["end"] = meta["duration"]
     if tracks:
         edit["subtitles"]["track_id"] = tracks[0]["id"]
     s.execute("UPDATE projects SET edit=? WHERE id=?", (json.dumps(edit), project_id))

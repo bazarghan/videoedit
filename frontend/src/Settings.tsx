@@ -9,6 +9,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { api, json, size, Settings } from "./types";
+import ProjectDefaultsPanel from "./ProjectDefaults";
 type Props = {
   onSettings: (s: Settings) => void;
   onError: (s: string) => void;
@@ -66,10 +67,22 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
         <div>
           <span className="eyebrow">A WORKSPACE THAT WORKS FOR YOU</span>
           <h1>Settings</h1>
-          <p>Connect your account and manage your media storage.</p>
+          <p>
+            Set your editing defaults, connect Telegram, and manage storage.
+          </p>
         </div>
       </div>
       <div className="settings-grid">
+        <ProjectDefaultsPanel
+          initial={settings.project_defaults}
+          onSaved={(defaults) => {
+            const next = { ...settings, project_defaults: defaults };
+            setSettings(next);
+            onSettings(next);
+          }}
+          onError={onError}
+          toast={toast}
+        />
         <section className="panel">
           <div className="panel-heading">
             <div className="panel-icon">

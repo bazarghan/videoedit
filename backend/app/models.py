@@ -15,8 +15,7 @@ class Cue(Strict):
     text: str = Field(max_length=4000)
 
 
-class SubtitleStyle(Strict):
-    track_id: str = ""
+class SubtitleDefaults(Strict):
     burn: bool = True
     preserve_ass: bool = False
     font: FontFamily = "DejaVu Sans"
@@ -40,6 +39,10 @@ class SubtitleStyle(Strict):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
             raise ValueError("Choose a valid color.")
         return v
+
+
+class SubtitleStyle(SubtitleDefaults):
+    track_id: str = ""
 
 
 class Crop(Strict):
@@ -74,6 +77,16 @@ class Audio(Strict):
     music_volume: float = Field(default=0.3, ge=0, le=3)
     fade_in: float = Field(default=0.5, ge=0, le=30)
     fade_out: float = Field(default=1, ge=0, le=30)
+
+
+class ProjectDefaults(Strict):
+    subtitles: SubtitleDefaults = Field(default_factory=SubtitleDefaults)
+    watermark: Watermark = Field(default_factory=Watermark)
+
+
+class ProjectDefaultsPatch(Strict):
+    subtitles: SubtitleDefaults | None = None
+    watermark: Watermark | None = None
 
 
 class Edit(Strict):

@@ -60,6 +60,7 @@ export default function Editor({
     [volume, setVolume] = useState(1),
     [speed, setSpeed] = useState(1),
     [saving, setSaving] = useState(false),
+    [savingDefaults, setSavingDefaults] = useState(false),
     [saved, setSaved] = useState(false),
     [height, setHeight] = useState(450),
     [frameWidth, setFrameWidth] = useState(800),
@@ -80,6 +81,26 @@ export default function Editor({
     (j) => j.project_id === id && ["queued", "running"].includes(j.status),
   );
   const complete = !!project?.metadata.duration;
+  async function saveAsDefaults(section: "subtitles" | "watermark") {
+    if (!edit) return;
+    setSavingDefaults(true);
+    try {
+      const { track_id: _track, ...subtitles } = edit.subtitles;
+      await api(
+        "/settings/project-defaults",
+        json("PATCH", {
+          [section]: section === "subtitles" ? subtitles : edit.watermark,
+        }),
+      );
+      toast(
+        `${section === "subtitles" ? "Subtitle" : "Watermark"} defaults saved for new projects.`,
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setSavingDefaults(false);
+    }
+  }
   useEffect(() => {
     setProject(null);
     setEdit(null);
@@ -947,6 +968,13 @@ export default function Editor({
                   <h2>Make every word count</h2>
                   <p>Readable captions, right where you want them.</p>
                 </div>
+                <button
+                  className="secondary wide"
+                  disabled={savingDefaults}
+                  onClick={() => saveAsDefaults("subtitles")}
+                >
+                  <Save size={16} /> Save subtitle settings as defaults
+                </button>
                 <label>
                   Subtitle track
                   <Select
@@ -1340,6 +1368,13 @@ export default function Editor({
                   <h2>Leave your signature</h2>
                   <p>A small mark that makes it yours.</p>
                 </div>
+                <button
+                  className="secondary wide"
+                  disabled={savingDefaults}
+                  onClick={() => saveAsDefaults("watermark")}
+                >
+                  <Save size={16} /> Save watermark settings as defaults
+                </button>
                 <label>
                   Watermark type
                   <Select

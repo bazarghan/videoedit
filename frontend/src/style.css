@@ -1065,6 +1065,38 @@ label.check {
   gap: 24px;
   align-items: start;
 }
+.project-defaults {
+  grid-column: 1 / -1;
+}
+.defaults-intro {
+  margin-bottom: 24px;
+}
+.defaults-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.defaults-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  margin-bottom: 20px;
+}
+.defaults-columns h3 {
+  margin-bottom: 18px;
+}
+.defaults-columns input[type="color"] {
+  width: 100%;
+  height: 40px;
+  padding: 4px;
+}
+@media (max-width: 760px) {
+  .defaults-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);

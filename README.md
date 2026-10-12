@@ -58,6 +58,8 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 
 Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge; the default 1920-pixel edge produces Full HD landscape or vertical clips. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
 
+In **Settings → Project defaults**, choose the subtitle font, size, colors, outline, shadow, background, positioning, and timing offset, plus the watermark type, text or image, font, size, opacity, placement, and visibility times. Click **Save project defaults** to use them for each new URL or uploaded-video import. In the editor, **Save subtitle settings as defaults** and **Save watermark settings as defaults** update that section independently. Existing projects keep their settings. Image watermarks are copied into new projects and remain available even if the original project is deleted. **Reset to built-in defaults** restores the original presets for future imports.
+
 ## SOCKS5 downloads
 
 In **New project → Video link**, enable **Use SOCKS5 proxy** and enter its hostname/IP address and port (usually 1080). Username and password are optional. **Save proxy** stores the connection for future downloads; starting a proxied download also saves it. Keep the checkbox off to connect directly.

@@ -9,7 +9,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,8 @@ from .models import (
     Edit,
     ImportURL,
     Login,
+    ProjectDefaults,
+    ProjectDefaultsPatch,
     Rename,
     SendClip,
     StorageConfig,
@@ -32,6 +34,12 @@ from .models import (
     TelegramConfig,
 )
 from .network import validate_url
+from .project_defaults import (
+    get_defaults,
+    initial_edit,
+    remove_default_asset,
+    save_defaults,
+)
 from .telegram import error_message, telegram
 from .workers import ACTIVE_JOBS, worker
 
@@ -264,11 +272,12 @@ def public_project(row):
     }
 
 
-def new_project(name, status="queued"):
-    ident = s.uid()
+def new_project(name, status="queued", source=None, ident=None):
+    ident = ident or s.uid()
+    edit = initial_edit(ident)
     s.execute(
-        "INSERT INTO projects(id,name,status,created) VALUES (?,?,?,?)",
-        (ident, name, status, time.time()),
+        "INSERT INTO projects(id,name,status,source,edit,created) VALUES (?,?,?,?,?,?)",
+        (ident, name, status, source, edit.model_dump_json(), time.time()),
     )
     return ident
 
@@ -362,10 +371,7 @@ async def import_upload(file: UploadFile = File(...)):
         await save_upload(file, path, int(s.setting("storage_limit_gb", 20)) * 1024**3)
         signature(path, "video")
         name = Path(file.filename or "Uploaded video").stem[:120]
-        s.execute(
-            "INSERT INTO projects(id,name,source,status,created) VALUES (?,?,?,?,?)",
-            (ident, name, str(path), "queued", time.time()),
-        )
+        new_project(name, source=str(path), ident=ident)
         job_id = s.job("ingest", ident, {"path": str(path)})
         return {"project_id": ident, "job_id": job_id}
     except BaseException:
@@ -497,6 +503,10 @@ async def upload_subtitles(ident: str, file: UploadFile = File(...)):
 @app.post("/api/projects/{ident}/assets/{kind}")
 async def upload_asset(ident: str, kind: str, file: UploadFile = File(...)):
     project(ident)
+    return await save_asset(ident, kind, file)
+
+
+async def save_asset(ident, kind, file):
     if kind not in ("watermark", "music"):
         raise HTTPException(404, "Asset type not found.")
     asset_id = s.uid()
@@ -757,7 +767,47 @@ async def get_settings():
         },
         "telegram_status": await telegram.status(),
         "storage": storage_info(),
+        "project_defaults": get_defaults().model_dump(),
     }
+
+
+@app.get("/api/settings/project-defaults")
+async def get_project_defaults():
+    return get_defaults()
+
+
+@app.put("/api/settings/project-defaults")
+async def set_project_defaults(body: ProjectDefaults):
+    return save_defaults(body)
+
+
+@app.patch("/api/settings/project-defaults")
+async def patch_project_defaults(body: ProjectDefaultsPatch):
+    with s.lock:
+        defaults = get_defaults().model_dump()
+        defaults.update(body.model_dump(exclude_none=True))
+        return save_defaults(ProjectDefaults.model_validate(defaults))
+
+
+@app.delete("/api/settings/project-defaults")
+async def reset_project_defaults():
+    return save_defaults(ProjectDefaults())
+
+
+@app.post("/api/settings/project-defaults/watermark")
+async def upload_default_watermark(
+    defaults: str = Form(..., max_length=10000), file: UploadFile = File(...)
+):
+    body = ProjectDefaults.model_validate_json(defaults)
+    result = await save_asset(None, "watermark", file)
+    asset_id = result["asset_id"]
+    try:
+        with s.lock:
+            body.watermark.kind = "image"
+            body.watermark.asset_id = asset_id
+            return save_defaults(body)
+    finally:
+        remove_default_asset(asset_id)
 
 
 @app.get("/api/settings/download-proxy")

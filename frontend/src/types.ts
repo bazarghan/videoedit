@@ -60,6 +60,10 @@ export type Metadata = {
   audio: { index: number; codec: string; language: string; title: string }[];
   subtitles: unknown[];
 };
+export type ProjectDefaults = {
+  subtitles: Omit<Edit["subtitles"], "track_id">;
+  watermark: Edit["watermark"];
+};
 export type Project = {
   id: string;
   name: string;
@@ -103,6 +107,7 @@ export type Clip = {
   has_cover: boolean;
 };
 export type Settings = {
+  project_defaults: ProjectDefaults;
   telegram: {
     api_id: number | string;
     api_hash_saved: boolean;
