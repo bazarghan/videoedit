@@ -72,6 +72,7 @@ export type Project = {
   metadata: Metadata;
   edit: Edit;
   has_source: boolean;
+  auto_preview: boolean;
   has_preview: boolean;
   preview_audio_track: number;
   source_playback_type: string | null;

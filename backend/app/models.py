@@ -106,6 +106,11 @@ class ImportURL(Strict):
     url: str = Field(min_length=8, max_length=12000)
     name: str = Field(default="Imported video", min_length=1, max_length=120)
     use_proxy: bool = False
+    auto_preview: bool = True
+
+
+class PreviewPreference(Strict):
+    auto_preview: bool
 
 
 class DownloadProxyConfig(Strict):

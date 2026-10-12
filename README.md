@@ -2,7 +2,7 @@
 
 A private, self-hosted clip studio. Import a video, choose a moment, shape the frame, style the captions, and export a finished MP4. Send an export through your own Telegram account when you choose.
 
-Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Compatible MP4 and WebM files play directly; other inputs receive cached H.264/AAC browser previews. If the current browser cannot decode a compatible source, VideoEdit automatically generates a fallback preview. Embedded text subtitles remain editable in either mode.
+Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Imports default to trying the original in your browser, including MKV files. Choose **Generate browser preview automatically** to enable conversion when needed, or use **Generate browser preview** in the editor later. The automatic setting can be changed per project; when off, unsupported playback never starts a conversion by itself. Embedded text subtitles remain editable in either mode.
 
 ## Features
 
@@ -49,7 +49,7 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 ## Create a clip
 
 1. Click **New project** and paste a direct media URL or upload a video. Website page URLs, platform scraping, DRM, and adaptive playlists are outside the importer.
-2. Wait for inspection and the browser preview. Select a subtitle track in **Captions**; text subtitles appear over the player.
+2. Wait for inspection. The original video plays if your browser supports it. If it cannot play, use **Generate browser preview** below the player. You can enable or disable automatic preview generation there at any time. Select a subtitle track in **Captions**; text subtitles appear over the player.
 3. Drag the timeline handles or enter exact start/end seconds. Use **Set start here**, **Set end here**, and loop to refine the selection.
 4. Choose a frame in **Frame**. Fill crops the edges; Fit retains the whole source with black padding. Drag to reframe or use the position sliders.
 5. Style captions, add a watermark in **Mark**, and choose music or an audio track in **Audio**. Save cue text changes with **Save cues**; other valid edit settings save automatically.
@@ -143,7 +143,7 @@ A single FastAPI process owns persistent SQLite queues and three background lane
 
 The editor provides a responsive approximation of libass captions. Original ASS styles, animated effects, complex shaping, outline rendering, and background boxes can differ from the browser overlay; rendered previews provide the exact output. With **Preserve original ASS styling** enabled, original ASS events and styles are used, so custom cue edits and uniform style controls apply only when that option is disabled.
 
-Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Single-track H.264/AAC MP4 and VP8/VP9 WebM files can play directly without extra video storage. HEVC MP4 playback depends on the browser; unsupported browsers generate a fallback preview. MKV files and sources with multiple audio tracks receive generated previews. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports.
+Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Original playback depends on the browser, container, and codecs; trying it does not create an extra video file. With automatic preview generation enabled, compatible MP4/WebM files play directly, while unsupported formats or playback failures get a fallback preview. With it disabled, even MKV files are tried directly and conversion requires clicking **Generate browser preview**. Original playback uses the video's default audio track; generated previews play the selected track. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports. Disabling automatic generation stops automatic preview jobs and keeps already generated previews available; it does not delete files or stop manually requested previews.
 
 Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress and known-size requests; multipart files spool on the persistent data volume, and admission checks reserve space for the temporary copy. Probing, proxy generation, rendering, network downloads, and Telegram uploads run as background jobs. Preview original-audio changes regenerate the proxy. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
 

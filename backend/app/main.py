@@ -25,6 +25,7 @@ from .models import (
     Edit,
     ImportURL,
     Login,
+    PreviewPreference,
     ProjectDefaults,
     ProjectDefaultsPatch,
     Rename,
@@ -284,6 +285,7 @@ def public_project(row):
         "metadata": metadata,
         "edit": edit,
         "has_source": bool(row["source"]),
+        "auto_preview": bool(row["auto_preview"]),
         "has_preview": media.cached_preview(row, audio_track) is not None,
         "preview_audio_track": audio_track,
         "source_playback_type": media.browser_source_type(metadata)
@@ -293,12 +295,20 @@ def public_project(row):
     }
 
 
-def new_project(name, status="queued", source=None, ident=None):
+def new_project(name, status="queued", source=None, ident=None, auto_preview=True):
     ident = ident or s.uid()
     edit = initial_edit(ident)
     s.execute(
-        "INSERT INTO projects(id,name,status,source,edit,created) VALUES (?,?,?,?,?,?)",
-        (ident, name, status, source, edit.model_dump_json(), time.time()),
+        "INSERT INTO projects(id,name,status,source,edit,created,auto_preview) VALUES (?,?,?,?,?,?,?)",
+        (
+            ident,
+            name,
+            status,
+            source,
+            edit.model_dump_json(),
+            time.time(),
+            auto_preview,
+        ),
     )
     return ident
 
@@ -337,7 +347,7 @@ async def import_url(body: ImportURL):
             )
         payload["proxy"] = config
     s.space_for()
-    ident = new_project(body.name)
+    ident = new_project(body.name, auto_preview=body.auto_preview)
     job_id = s.job("download", ident, payload)
     return {"project_id": ident, "job_id": job_id}
 
@@ -385,14 +395,14 @@ async def save_upload(file, path, limit):
 
 
 @app.post("/api/import/upload")
-async def import_upload(file: UploadFile = File(...)):
+async def import_upload(file: UploadFile = File(...), auto_preview: bool = Form(True)):
     ident = s.uid()
     path = s.DATA / "sources" / (ident + ".media")
     try:
         await save_upload(file, path, int(s.setting("storage_limit_gb", 20)) * 1024**3)
         signature(path, "video")
         name = Path(file.filename or "Uploaded video").stem[:120]
-        new_project(name, source=str(path), ident=ident)
+        new_project(name, source=str(path), ident=ident, auto_preview=auto_preview)
         job_id = s.job("ingest", ident, {"path": str(path)})
         return {"project_id": ident, "job_id": job_id}
     except BaseException:
@@ -452,10 +462,14 @@ async def render_project(ident: str, body: Edit, preview: bool = False):
 
 
 @app.post("/api/projects/{ident}/preview")
-async def create_proxy(ident: str, audio_track: int = 0, force: bool = False):
+async def create_proxy(
+    ident: str, audio_track: int = 0, force: bool = False, automatic: bool = False
+):
     row = project(ident)
     if not row["source"]:
         raise ValueError("The source is no longer available.")
+    if automatic and not row["auto_preview"]:
+        return {"job_id": None, "skipped": True}
     if audio_track < 0 or audio_track >= max(
         1, len(json.loads(row["metadata"]).get("audio", []))
     ):
@@ -480,11 +494,52 @@ async def create_proxy(ident: str, audio_track: int = 0, force: bool = False):
         ),
         None,
     )
+    if active and not automatic:
+        payload = s.decrypt(active["payload"])
+        payload.update(automatic=False, force=force or payload.get("force", False))
+        s.execute(
+            "UPDATE jobs SET payload=? WHERE id=?", (s.encrypt(payload), active["id"])
+        )
     return {
         "job_id": active["id"]
         if active
-        else s.job("proxy", ident, {"audio_track": audio_track, "force": force})
+        else s.job(
+            "proxy",
+            ident,
+            {"audio_track": audio_track, "force": force, "automatic": automatic},
+        )
     }
+
+
+@app.patch("/api/projects/{ident}/preview-settings")
+async def preview_settings(ident: str, body: PreviewPreference):
+    row = project(ident)
+    s.execute(
+        "UPDATE projects SET auto_preview=? WHERE id=?", (body.auto_preview, ident)
+    )
+    if not body.auto_preview:
+        for job in s.rows(
+            "SELECT id,payload FROM jobs WHERE project_id=? AND kind='proxy' AND status IN ('queued','running')",
+            (ident,),
+        ):
+            payload = s.decrypt(job["payload"])
+            if payload.get("automatic", not payload.get("force", False)):
+                s.update_job(
+                    job["id"],
+                    status="cancelled",
+                    finished=time.time(),
+                    error="Automatic preview generation disabled.",
+                )
+        if json.loads(row["metadata"]).get("duration") and row["status"] in (
+            "ready",
+            "processing",
+            "cancelled",
+        ):
+            s.execute("UPDATE projects SET status='ready' WHERE id=?", (ident,))
+    elif row["source"] and json.loads(row["metadata"]).get("duration"):
+        track = json.loads(row["edit"]).get("audio", {}).get("track", 0)
+        await create_proxy(ident, audio_track=track, automatic=True)
+    return public_project(project(ident))
 
 
 @app.get("/api/projects/{ident}/subtitles/{track_id}")
@@ -645,7 +700,11 @@ async def clips():
 
 @app.get("/api/media/project/{ident}/{kind}")
 async def project_media(
-    ident: str, kind: str, audio_track: int = 0, force_preview: bool = False
+    ident: str,
+    kind: str,
+    audio_track: int = 0,
+    force_preview: bool = False,
+    original: bool = False,
 ):
     row = project(ident)
     if kind not in ("source", "preview", "thumbnail"):
@@ -655,9 +714,9 @@ async def project_media(
         direct_type = media.browser_source_type(
             json.loads(row["metadata"]), audio_track
         )
-        if row["source"] and direct_type and not force_preview:
+        if row["source"] and (original or (direct_type and not force_preview)):
             path = Path(row["source"])
-            media_type = direct_type.split(";", 1)[0]
+            media_type = media.original_media_type(json.loads(row["metadata"]))
         else:
             path = media.cached_preview(row, audio_track)
             media_type = "video/mp4"

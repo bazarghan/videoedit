@@ -155,9 +155,19 @@ async def worker(kinds):
                 error="Cancelled by you.",
             )
             if job["kind"] in ("download", "ingest", "proxy"):
+                project = s.one(
+                    "SELECT auto_preview FROM projects WHERE id=?", (job["project_id"],)
+                )
                 s.execute(
                     "UPDATE projects SET status=? WHERE id=?",
-                    ("cancelled", job["project_id"]),
+                    (
+                        "ready"
+                        if job["kind"] == "proxy"
+                        and project
+                        and not project["auto_preview"]
+                        else "cancelled",
+                        job["project_id"],
+                    ),
                 )
         except asyncio.CancelledError:
             s.update_job(

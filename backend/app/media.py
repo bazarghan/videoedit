@@ -202,6 +202,14 @@ def browser_source_type(info, audio_track=0):
     return None
 
 
+def original_media_type(info):
+    if info.get("browser_container") == "webm":
+        return "video/webm"
+    if "mp4" in info.get("format", "").split(","):
+        return "video/mp4"
+    return "video/x-matroska"
+
+
 def cached_preview(project, audio_track=0):
     path = s.DATA / "previews" / (project["id"] + f"-a{audio_track}.mp4")
     return path if path.is_file() else None
@@ -435,15 +443,22 @@ async def ingest(project_id, path, ident):
         )
     except ValueError:
         pass
-    if browser_source_type(meta):
+    preference = s.one("SELECT auto_preview FROM projects WHERE id=?", (project_id,))
+    if browser_source_type(meta) or not preference["auto_preview"]:
         s.execute("UPDATE projects SET status='ready' WHERE id=?", (project_id,))
     else:
-        s.job("proxy", project_id, {"audio_track": 0})
+        s.job("proxy", project_id, {"audio_track": 0, "automatic": True})
 
 
 async def proxy(project, payload, ident):
     meta = json.loads(project["metadata"])
     audio_track = int(payload.get("audio_track", 0))
+    if (
+        payload.get("automatic", not payload.get("force", False))
+        and not project["auto_preview"]
+    ):
+        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project["id"],))
+        return
     if meta["audio"] and audio_track >= len(meta["audio"]):
         raise ValueError("That audio track does not exist.")
     if not payload.get("force") and browser_source_type(meta, audio_track):

@@ -58,6 +58,12 @@ with db() as con:
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires REAL);
     """)
+    if "auto_preview" not in {
+        column["name"] for column in con.execute("PRAGMA table_info(projects)")
+    }:
+        con.execute(
+            "ALTER TABLE projects ADD COLUMN auto_preview INTEGER NOT NULL DEFAULT 1"
+        )
 
 
 def execute(sql, args=()):

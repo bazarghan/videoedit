@@ -67,6 +67,8 @@ export default function Editor({
     [cropDrag, setCropDrag] = useState(false),
     [busy, setBusy] = useState(false),
     [forcePreview, setForcePreview] = useState(false),
+    [previewBusy, setPreviewBusy] = useState(false),
+    [originalFailed, setOriginalFailed] = useState(false),
     [stageHeight, setStageHeight] = useState(450),
     [wmBox, setWmBox] = useState({ width: 100, height: 30 }),
     [cuePage, setCuePage] = useState(0);
@@ -84,15 +86,61 @@ export default function Editor({
   const complete = !!project?.metadata.duration;
   const sourceType = project?.source_playback_type;
   const useOriginal = !!(
-    sourceType &&
+    project?.has_source &&
     !forcePreview &&
-    edit?.audio.track === 0 &&
-    document.createElement("video").canPlayType(sourceType)
+    (!project.auto_preview ||
+      (sourceType &&
+        edit?.audio.track === 0 &&
+        document.createElement("video").canPlayType(sourceType)))
   );
   const cachedPlayback = !!(
     project?.has_preview && project.preview_audio_track === edit?.audio.track
   );
   const playbackReady = useOriginal || cachedPlayback;
+  const previewRunning = active.some((j) => j.kind === "proxy");
+  async function generatePreview() {
+    if (!edit) return;
+    setPreviewBusy(true);
+    try {
+      const result = await api<{ job_id: string | null }>(
+        `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
+        json("POST"),
+      );
+      setForcePreview(true);
+      setOriginalFailed(false);
+      const updated = await api<Project>(`/projects/${id}`);
+      setProject((old) => (old?.id === id ? { ...old, ...updated } : old));
+      toast(
+        result.job_id ? "Browser preview queued." : "Browser preview ready.",
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+  async function changeAutoPreview(enabled: boolean) {
+    setPreviewBusy(true);
+    try {
+      const updated = await api<Project>(
+        `/projects/${id}/preview-settings`,
+        json("PATCH", { auto_preview: enabled }),
+      );
+      setProject((old) => (old?.id === id ? { ...old, ...updated } : old));
+      setForcePreview(false);
+      setOriginalFailed(false);
+      lastProxy.current = "";
+      toast(
+        enabled
+          ? "Automatic previews enabled."
+          : "Automatic previews disabled.",
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
   async function saveAsDefaults(section: "subtitles" | "watermark") {
     if (!edit) return;
     setSavingDefaults(true);
@@ -118,6 +166,7 @@ export default function Editor({
     setEdit(null);
     lastProxy.current = "";
     setForcePreview(false);
+    setOriginalFailed(false);
     setCues([]);
     setSaved(false);
     setTime(0);
@@ -144,12 +193,19 @@ export default function Editor({
     return () => clearInterval(t);
   }, [id, playbackReady, complete, active.length]);
   useEffect(() => {
-    if (!complete || !edit || !project?.has_source || playbackReady) return;
+    if (
+      !complete ||
+      !edit ||
+      !project?.has_source ||
+      !project.auto_preview ||
+      playbackReady
+    )
+      return;
     const key = `${id}:${edit.audio.track}:${forcePreview}`;
     if (lastProxy.current === key) return;
     lastProxy.current = key;
     api(
-      `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
+      `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true&automatic=true`,
       json("POST"),
     ).catch((e) => onError(e.message));
   }, [
@@ -157,6 +213,7 @@ export default function Editor({
     complete,
     edit?.audio.track,
     project?.has_source,
+    project?.auto_preview,
     playbackReady,
     forcePreview,
   ]);
@@ -580,7 +637,7 @@ export default function Editor({
                 <video
                   ref={video}
                   key={`${project.id}:${edit.audio.track}:${useOriginal}`}
-                  src={`/api/media/project/${id}/preview?audio_track=${edit.audio.track}&force_preview=${!useOriginal}&v=${jobs.filter((j) => j.kind === "proxy" && j.project_id === id && j.status === "completed").length}`}
+                  src={`/api/media/project/${id}/preview?audio_track=${edit.audio.track}&original=${useOriginal}&force_preview=${!useOriginal}&v=${jobs.filter((j) => j.kind === "proxy" && j.project_id === id && j.status === "completed").length}`}
                   style={{
                     objectFit: edit.crop.mode === "fit" ? "contain" : "cover",
                     objectPosition: `${edit.crop.x * 100}% ${edit.crop.y * 100}%`,
@@ -601,7 +658,12 @@ export default function Editor({
                     if (useOriginal && (code === 3 || code === 4)) {
                       setPlaying(false);
                       setForcePreview(true);
-                      toast("Preparing a compatible preview for this browser.");
+                      setOriginalFailed(true);
+                      if (project.auto_preview) {
+                        toast(
+                          "Preparing a compatible preview for this browser.",
+                        );
+                      }
                     } else {
                       onError(
                         "Video playback failed. Reload the project to try again.",
@@ -620,24 +682,21 @@ export default function Editor({
                 />
               ) : (
                 <div className="preview-pending">
-                  <LoaderCircle className="spin" size={30} />
-                  <strong>Preparing browser preview</strong>
-                  <span>Your original is kept for final rendering.</span>
-                  {active.length === 0 && (
-                    <button
-                      className="secondary"
-                      onClick={() =>
-                        api(
-                          `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
-                          json("POST"),
-                        )
-                          .then(() => toast("Browser preview queued."))
-                          .catch((e) => onError(e.message))
-                      }
-                    >
-                      Generate preview
-                    </button>
+                  {previewRunning && (
+                    <LoaderCircle className="spin" size={30} />
                   )}
+                  <strong>
+                    {previewRunning
+                      ? "Preparing browser preview"
+                      : originalFailed
+                        ? "This browser cannot play the original video"
+                        : "Browser preview is not available"}
+                  </strong>
+                  <span>
+                    {previewRunning
+                      ? "Your original is kept for final rendering."
+                      : "Use Generate browser preview below to create a compatible copy."}
+                  </span>
                 </div>
               )}
               {visibleCues.length > 0 && (
@@ -770,6 +829,41 @@ export default function Editor({
               <Maximize size={17} />
             </button>
           </div>
+          <div className="preview-options">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={project.auto_preview}
+                disabled={previewBusy}
+                onChange={(e) => changeAutoPreview(e.target.checked)}
+              />
+              Generate browser preview automatically
+            </label>
+            <button
+              className="secondary"
+              disabled={previewBusy || previewRunning || !project.has_source}
+              onClick={generatePreview}
+            >
+              {previewRunning ? (
+                <LoaderCircle className="spin" size={15} />
+              ) : (
+                <Play size={15} />
+              )}
+              {previewRunning
+                ? "Generating preview…"
+                : cachedPlayback
+                  ? "Use browser preview"
+                  : "Generate browser preview"}
+            </button>
+          </div>
+          <p className="hint">
+            {project.auto_preview
+              ? "A compatible preview is generated only when needed."
+              : "Automatic conversion is off. Try the original, or generate a preview yourself."}
+            {useOriginal &&
+              project.metadata.audio.length > 1 &&
+              " Original playback uses the video's default audio track; a generated preview plays your selected track."}
+          </p>
           <div className="timeline-panel">
             <div className="timeline-label">
               <span>

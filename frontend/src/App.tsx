@@ -70,6 +70,7 @@ export default function App() {
     [name, setName] = useState(""),
     [tab, setTab] = useState("url"),
     [progress, setProgress] = useState(0);
+  const [autoPreview, setAutoPreview] = useState(false);
   const [useProxy, setUseProxy] = useState(false),
     [proxy, setProxy] = useState<DownloadProxyDraft>(emptyProxy),
     [proxyBusy, setProxyBusy] = useState(false);
@@ -155,6 +156,7 @@ export default function App() {
           url,
           name: name || "Imported video",
           use_proxy: useProxy,
+          auto_preview: autoPreview,
         }),
       );
       setUrl("");
@@ -201,6 +203,7 @@ export default function App() {
     setProgress(0);
     const form = new FormData();
     form.append("file", file);
+    form.append("auto_preview", String(autoPreview));
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/import/upload");
     xhr.upload.onprogress = (e) => {
@@ -743,6 +746,19 @@ export default function App() {
                 <Upload size={15} /> Upload a file
               </button>
             </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={autoPreview}
+                disabled={busy}
+                onChange={(e) => setAutoPreview(e.target.checked)}
+              />
+              Generate browser preview automatically
+            </label>
+            <p className="hint">
+              Leave off to try the original video without conversion. You can
+              generate a preview later in the editor.
+            </p>
             {tab === "url" ? (
               <form onSubmit={importURL}>
                 <label>

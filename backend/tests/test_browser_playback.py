@@ -185,3 +185,134 @@ def test_audio_tracks_have_separate_preview_jobs(browser_sources):
     assert client.post(f"/api/projects/{pid}/preview?audio_track=1").json() == second
     for job in (first, second):
         s.update_job(job["job_id"], status="cancelled", finished=time.time())
+
+
+def test_unchecked_mkv_import_requires_manual_preview(browser_sources):
+    source = browser_sources / "mkv.mkv"
+    with TestClient(app) as client:
+        login(client)
+        imported = client.post(
+            "/api/import/upload",
+            data={"auto_preview": "false"},
+            files={"file": (source.name, source.read_bytes())},
+        ).json()
+        wait_job(client, imported["job_id"])
+        pid = imported["project_id"]
+        project = client.get(f"/api/projects/{pid}").json()
+        assert project["auto_preview"] is False and project["status"] == "ready"
+        assert not project["has_preview"]
+        assert not s.rows(
+            "SELECT id FROM jobs WHERE project_id=? AND kind='proxy'", (pid,)
+        )
+        original = client.get(
+            f"/api/media/project/{pid}/preview?original=true",
+            headers={"Range": "bytes=0-99"},
+        )
+        assert original.status_code == 206
+        assert original.headers["content-type"] == "video/x-matroska"
+        assert original.content == source.read_bytes()[:100]
+        assert client.post(
+            f"/api/projects/{pid}/preview?force=true&automatic=true"
+        ).json() == {"job_id": None, "skipped": True}
+        assert not list((s.DATA / "previews").glob(pid + "-*.mp4"))
+        manual = client.post(f"/api/projects/{pid}/preview?force=true").json()
+        wait_job(client, manual["job_id"])
+        assert (
+            client.get(
+                f"/api/media/project/{pid}/preview?force_preview=true"
+            ).status_code
+            == 200
+        )
+        assert client.get(f"/api/projects/{pid}").json()["auto_preview"] is False
+        assert (
+            client.patch(
+                f"/api/projects/{pid}/preview-settings", json={"auto_preview": True}
+            ).json()["auto_preview"]
+            is True
+        )
+        assert (
+            client.patch(
+                f"/api/projects/{pid}/preview-settings", json={"auto_preview": False}
+            ).json()["auto_preview"]
+            is False
+        )
+        assert media.cached_preview({"id": pid}).exists()
+
+
+def test_download_checkbox_and_editable_preview_setting():
+    client = TestClient(app)
+    token = s.uid()
+    s.execute(
+        "INSERT INTO sessions VALUES (?,?)",
+        (hashlib.sha256(token.encode()).hexdigest(), time.time() + 60),
+    )
+    client.cookies.set("videoedit_session", token)
+    response = client.post(
+        "/api/import/url",
+        json={"url": "https://example.com/video.mkv", "auto_preview": False},
+    )
+    assert response.status_code == 200
+    pid = response.json()["project_id"]
+    assert client.get(f"/api/projects/{pid}").json()["auto_preview"] is False
+    changed = client.patch(
+        f"/api/projects/{pid}/preview-settings", json={"auto_preview": True}
+    )
+    assert changed.status_code == 200 and changed.json()["auto_preview"] is True
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/preview-settings", json={"auto_preview": "invalid"}
+        ).status_code
+        == 422
+    )
+    s.update_job(response.json()["job_id"], status="cancelled", finished=time.time())
+
+
+def test_disabling_preview_cancels_only_automatic_jobs(browser_sources):
+    source = browser_sources / "mkv.mkv"
+    pid = new_project(
+        "Automatic preview preference",
+        source=str(source),
+        status="ready",
+        auto_preview=False,
+    )
+    metadata = asyncio.run(media.probe(source))
+    s.execute("UPDATE projects SET metadata=? WHERE id=?", (json.dumps(metadata), pid))
+    client = TestClient(app)
+    token = s.uid()
+    s.execute(
+        "INSERT INTO sessions VALUES (?,?)",
+        (hashlib.sha256(token.encode()).hexdigest(), time.time() + 60),
+    )
+    client.cookies.set("videoedit_session", token)
+    enabled = client.patch(
+        f"/api/projects/{pid}/preview-settings", json={"auto_preview": True}
+    )
+    assert enabled.status_code == 200
+    automatic = s.one("SELECT id FROM jobs WHERE project_id=? AND kind='proxy'", (pid,))
+    assert automatic
+    client.patch(f"/api/projects/{pid}/preview-settings", json={"auto_preview": False})
+    assert (
+        s.one("SELECT status FROM jobs WHERE id=?", (automatic["id"],))["status"]
+        == "cancelled"
+    )
+    # Manual requests remain allowed with the preference off.
+    manual = client.post(f"/api/projects/{pid}/preview?force=true").json()["job_id"]
+    client.patch(f"/api/projects/{pid}/preview-settings", json={"auto_preview": False})
+    assert s.one("SELECT status FROM jobs WHERE id=?", (manual,))["status"] == "queued"
+    s.update_job(manual, status="cancelled", finished=time.time())
+    # Explicitly requesting an already queued automatic job makes it manual.
+    client.patch(f"/api/projects/{pid}/preview-settings", json={"auto_preview": True})
+    automatic = s.one(
+        "SELECT id FROM jobs WHERE project_id=? AND kind='proxy' AND status='queued'",
+        (pid,),
+    )
+    assert (
+        client.post(f"/api/projects/{pid}/preview?force=true").json()["job_id"]
+        == automatic["id"]
+    )
+    client.patch(f"/api/projects/{pid}/preview-settings", json={"auto_preview": False})
+    assert (
+        s.one("SELECT status FROM jobs WHERE id=?", (automatic["id"],))["status"]
+        == "queued"
+    )
+    s.update_job(automatic["id"], status="cancelled", finished=time.time())
