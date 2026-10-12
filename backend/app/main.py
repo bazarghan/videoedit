@@ -17,6 +17,7 @@ from pwdlib import PasswordHash
 
 from . import media
 from . import store as s
+from .font_catalog import FONT_SLUGS, font_path
 from .models import (
     CoverSelection,
     Cue,
@@ -895,20 +896,9 @@ async def telegram_disconnect():
 
 @app.get("/api/fonts/{font}")
 async def font_file(font: str):
-    allowed = {
-        "sans": "DejaVu Sans",
-        "serif": "DejaVu Serif",
-        "liberation-sans": "Liberation Sans",
-        "liberation-serif": "Liberation Serif",
-        "arabic": "Noto Sans Arabic",
-    }
-    if font not in allowed:
+    if font not in FONT_SLUGS:
         raise HTTPException(404, "Font not found.")
-    proc = await asyncio.create_subprocess_exec(
-        "fc-match", "-f", "%{file}", allowed[font], stdout=asyncio.subprocess.PIPE
-    )
-    path = (await proc.communicate())[0].decode()
-    return FileResponse(path, media_type="font/ttf")
+    return FileResponse(await font_path(FONT_SLUGS[font]), media_type="font/ttf")
 
 
 static = Path(os.getenv("STATIC_DIR", "/app/static"))

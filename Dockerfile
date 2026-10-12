@@ -12,6 +12,8 @@ WORKDIR /app
 COPY backend/requirements.txt backend/constraints.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 COPY backend/app ./app
+COPY backend/app/fonts/*.ttf /usr/local/share/fonts/videoedit/
+RUN fc-cache -f
 COPY --from=frontend /build/dist ./static
 RUN useradd --system --uid 10001 --create-home editor && mkdir /data && chown editor:editor /data
 USER editor

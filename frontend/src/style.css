@@ -18,6 +18,21 @@
   font-family: "Noto Sans Arabic";
   src: url("/api/fonts/arabic");
 }
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/api/fonts/vazirmatn") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Shabnam";
+  src: url("/api/fonts/shabnam") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sahel";
+  src: url("/api/fonts/sahel") format("truetype");
+  font-display: swap;
+}
 :root {
   font-family:
     Inter,

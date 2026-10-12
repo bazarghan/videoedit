@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .font_catalog import FontFamily
+
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -17,13 +19,7 @@ class SubtitleStyle(Strict):
     track_id: str = ""
     burn: bool = True
     preserve_ass: bool = False
-    font: Literal[
-        "DejaVu Sans",
-        "DejaVu Serif",
-        "Liberation Sans",
-        "Liberation Serif",
-        "Noto Sans Arabic",
-    ] = "DejaVu Sans"
+    font: FontFamily = "DejaVu Sans"
     size: int = Field(default=48, ge=12, le=160)
     color: str = "#ffffff"
     outline_color: str = "#000000"
@@ -64,13 +60,7 @@ class Watermark(Strict):
     opacity: float = Field(default=0.8, ge=0, le=1)
     margin: int = Field(default=24, ge=0, le=400)
     color: str = "#ffffff"
-    font: Literal[
-        "DejaVu Sans",
-        "DejaVu Serif",
-        "Liberation Sans",
-        "Liberation Serif",
-        "Noto Sans Arabic",
-    ] = "DejaVu Sans"
+    font: FontFamily = "DejaVu Sans"
     start: float = Field(default=0, ge=0)
     end: float | None = Field(default=None, gt=0)
     _color = field_validator("color")(SubtitleStyle.hex_color.__func__)

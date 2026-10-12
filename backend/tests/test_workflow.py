@@ -129,9 +129,13 @@ def test_complete_workflow(footage, tmp_path):
         assert cue_result["cues"][0]["text"] == "A moment worth keeping"
         edit = p["edit"]
         edit.update(start=2.25, end=6.75, filename="verified-vertical", resolution=720)
-        edit["subtitles"].update(size=72, color="#ffff00", offset=0.25)
+        edit["subtitles"].update(
+            font="Vazirmatn", size=72, color="#ffff00", offset=0.25
+        )
         edit["crop"].update(ratio="9:16", x=0.4)
-        edit["watermark"].update(kind="text", text="VideoEdit", x=0.9, y=0.1, size=50)
+        edit["watermark"].update(
+            kind="text", text="ویدیو فارسی", font="Shabnam", x=0.9, y=0.1, size=50
+        )
         with (footage / "music.wav").open("rb") as f:
             music = client.post(
                 f"/api/projects/{pid}/assets/music", files={"file": ("music.wav", f)}
@@ -151,6 +155,7 @@ def test_complete_workflow(footage, tmp_path):
             and abs(events[1].start - boundary) <= 10
         )
         assert events.styles["Default"].fontsize == 48
+        assert events.styles["Default"].fontname == "Vazirmatn"
         assert events.styles["Default"].primarycolor.r == 255
         rendered = client.post(f"/api/projects/{pid}/render", json=edit)
         assert rendered.status_code == 200, rendered.text

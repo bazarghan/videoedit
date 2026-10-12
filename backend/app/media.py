@@ -8,6 +8,7 @@ from fractions import Fraction
 import pysubs2
 
 from . import store as s
+from .font_catalog import FONT_DIR, font_path
 from .models import Edit
 
 TEXT_SUBS = {"subrip", "ass", "ssa", "mov_text", "webvtt", "text"}
@@ -610,16 +611,13 @@ async def render(project, payload, ident):
             work,
             payload.get("subtitle_snapshot"),
         )
-        vf += f",ass=filename='{filter_path(subs)}'"
+        vf += f",ass=filename='{filter_path(subs)}':fontsdir='{filter_path(FONT_DIR)}'"
     visibility_end = duration if wm.end is None else min(wm.end, duration)
     enable = f"between(t,{wm.start},{visibility_end})"
     if wm.kind == "text" and wm.text:
         textfile = work / "watermark.txt"
         textfile.write_text(wm.text)
-        fontproc = await asyncio.create_subprocess_exec(
-            "fc-match", "-f", "%{file}", wm.font, stdout=asyncio.subprocess.PIPE
-        )
-        fontpath = (await fontproc.communicate())[0].decode()
+        fontpath = await font_path(wm.font)
         fontsize = wm.size * h / 1080
         margin = wm.margin * h / 1080
         vf += f",drawtext=fontfile='{filter_path(fontpath)}':textfile='{filter_path(textfile)}':expansion=none:fontsize={fontsize}:fontcolor={wm.color}@{wm.opacity}:x={margin}+(w-tw-2*{margin})*{wm.x}:y={margin}+(h-th-2*{margin})*{wm.y}:enable='{enable}'"

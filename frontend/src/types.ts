@@ -170,6 +170,9 @@ export function clock(seconds: number = 0) {
   return `${Math.floor(s / 3600) ? Math.floor(s / 3600) + ":" : ""}${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 }
 export const fonts = [
+  "Vazirmatn",
+  "Shabnam",
+  "Sahel",
   "DejaVu Sans",
   "DejaVu Serif",
   "Liberation Sans",
