@@ -24,7 +24,6 @@ import {
   Scan,
   Sparkles,
   Languages,
-  Pencil,
 } from "lucide-react";
 import {
   api,
@@ -122,6 +121,7 @@ export default function Editor({
     [frameWidth, setFrameWidth] = useState(800),
     [cropDrag, setCropDrag] = useState(false),
     [busy, setBusy] = useState(false),
+    [autoStarting, setAutoStarting] = useState(false),
     [playbackFailed, setPlaybackFailed] = useState(false),
     [stageHeight, setStageHeight] = useState(450),
     [wmBox, setWmBox] = useState({ width: 100, height: 30 }),
@@ -228,6 +228,7 @@ export default function Editor({
     setTime(0);
     setCuePage(0);
     setRefine(null);
+    setAutoStarting(false);
     api<Project>(`/projects/${id}`)
       .then((p) => {
         setProject(p);
@@ -297,6 +298,9 @@ export default function Editor({
     };
   }, [edit?.subtitles.track_id, edit?.subtitles.fa_track_id]);
   useEffect(() => {
+    if (autoSubtitleJob) setAutoStarting(false);
+  }, [autoSubtitleJob]);
+  useEffect(() => {
     const job = jobs.find(
       (item) => item.project_id === id && item.kind === "autosubtitle",
     );
@@ -305,7 +309,7 @@ export default function Editor({
     autoSubtitleRef.current = key;
     if (job!.status === "completed") {
       api<Project>(`/projects/${id}`)
-        .then((next) => {
+        .then(async (next) => {
           setProject(next);
           setEdit((old) =>
             old
@@ -322,6 +326,18 @@ export default function Editor({
               : next.edit,
           );
           toast("Automatic English and Persian subtitles are ready.");
+          const track = next.edit.subtitles.track_id;
+          if (track)
+            try {
+              const data = await api(`/projects/${id}/subtitles/${track}`);
+              const first = (data.cues || []).find(
+                (cue: Cue) =>
+                  cue.end > next.edit.start && cue.start < next.edit.end,
+              );
+              if (first) seek(Math.max(first.start, next.edit.start));
+            } catch {
+              // The cues panel will report the error if the track is unreadable.
+            }
         })
         .catch((e) => onError(e.message));
     } else if (job!.status === "failed" && job!.error) {
@@ -334,11 +350,7 @@ export default function Editor({
       setCueRole("fa");
     else if (cueRole === "fa" && !edit.subtitles.fa_track_id)
       setCueRole("main");
-  }, [
-    cueRole,
-    edit?.subtitles.track_id,
-    edit?.subtitles.fa_track_id,
-  ]);
+  }, [cueRole, edit?.subtitles.track_id, edit?.subtitles.fa_track_id]);
   useEffect(() => {
     if (!frame.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -592,7 +604,11 @@ export default function Editor({
       );
       setProject(await api(`/projects/${id}`));
       if (kind === "subtitles")
-        update("subtitles", role === "fa" ? "fa_track_id" : "track_id", result.track_id);
+        update(
+          "subtitles",
+          role === "fa" ? "fa_track_id" : "track_id",
+          result.track_id,
+        );
       if (kind === "watermark") {
         update("watermark", "asset_id", result.asset_id);
         update("watermark", "kind", "image");
@@ -607,6 +623,7 @@ export default function Editor({
   }
   async function autoSubtitles() {
     setBusy(true);
+    setAutoStarting(true);
     try {
       await api(
         `/projects/${id}/autosubtitle`,
@@ -616,6 +633,7 @@ export default function Editor({
         "Automatic subtitles queued. ElevenLabs will transcribe, then 9Router will translate to Persian.",
       );
     } catch (e) {
+      setAutoStarting(false);
       onError((e as Error).message);
     } finally {
       setBusy(false);
@@ -845,8 +863,7 @@ export default function Editor({
         Number(edit.crop.ratio.split(":")[1]);
   const style = edit.subtitles,
     wm = edit.watermark;
-  const listTrackId =
-    cueRole === "fa" ? style.fa_track_id : style.track_id;
+  const listTrackId = cueRole === "fa" ? style.fa_track_id : style.track_id;
   const cues = listTrackId ? cuesByTrack[listTrackId] || [] : [];
   const mainTrackCues = style.track_id ? cuesByTrack[style.track_id] || [] : [];
   const faTrackCues = style.fa_track_id
@@ -926,9 +943,7 @@ export default function Editor({
           : style.align === "right"
             ? ("flex-end" as const)
             : ("center" as const),
-      background: style.box
-        ? `rgba(0,0,0,${style.box_opacity})`
-        : undefined,
+      background: style.box ? `rgba(0,0,0,${style.box_opacity})` : undefined,
       padding: style.box ? "2px 5px" : undefined,
     };
   };
@@ -959,7 +974,10 @@ export default function Editor({
               cancelCueEditRef.current = true;
               event.currentTarget.blur();
               setEditingCue(null);
-            } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            } else if (
+              event.key === "Enter" &&
+              (event.metaKey || event.ctrlKey)
+            ) {
               event.preventDefault();
               commitCueEdit();
             }
@@ -1033,18 +1051,22 @@ export default function Editor({
         <div className="form-actions">
           <button
             className="secondary"
-            disabled={busy || !project.has_source || !!autoSubtitleJob}
+            disabled={
+              busy || !project.has_source || !!autoSubtitleJob || autoStarting
+            }
             onClick={() => autoSubtitles()}
             title="Transcribe with ElevenLabs, translate with 9Router, and add English + Persian subtitles"
           >
-            {autoSubtitleJob ? (
+            {autoSubtitleJob || autoStarting ? (
               <LoaderCircle className="spin" size={15} />
             ) : (
               <Sparkles size={15} />
             )}{" "}
             {autoSubtitleJob
               ? `Auto subtitle ${autoSubtitleJob.progress.toFixed(0)}%`
-              : "Auto subtitle"}
+              : autoStarting
+                ? "Starting…"
+                : "Auto subtitle"}
           </button>
           <button
             className="secondary"
@@ -1085,6 +1107,9 @@ export default function Editor({
                     objectPosition: `${edit.crop.x * 100}% ${edit.crop.y * 100}%`,
                   }}
                   playsInline
+                  onClick={() => {
+                    if (!cropDrag) void toggle();
+                  }}
                   onLoadedMetadata={(e) => {
                     const player = e.currentTarget;
                     player.volume = Math.min(1, volume * edit.audio.volume);
@@ -1173,14 +1198,6 @@ export default function Editor({
                     {faVisible.map(({ cue, index }) =>
                       renderCaptionLine(style.fa_track_id, index, cue, true),
                     )}
-                  </div>
-                )}
-              {!style.soft &&
-                !playing &&
-                (mainVisible.length > 0 || faVisible.length > 0) && (
-                  <div className="stage-hint caption-edit-hint">
-                    <Pencil size={12} /> Paused — click a caption on the video
-                    to edit it
                   </div>
                 )}
               {watermarkVisible &&
@@ -1679,17 +1696,24 @@ export default function Editor({
                 </button>
                 <button
                   className="secondary wide"
-                  disabled={busy || !project.has_source || !!autoSubtitleJob}
+                  disabled={
+                    busy ||
+                    !project.has_source ||
+                    !!autoSubtitleJob ||
+                    autoStarting
+                  }
                   onClick={() => autoSubtitles()}
                 >
-                  {autoSubtitleJob ? (
+                  {autoSubtitleJob || autoStarting ? (
                     <LoaderCircle className="spin" size={16} />
                   ) : (
                     <Sparkles size={16} />
                   )}{" "}
                   {autoSubtitleJob
                     ? `Transcribing & translating ${autoSubtitleJob.progress.toFixed(0)}%`
-                    : "Auto subtitle (English + فارسی)"}
+                    : autoStarting
+                      ? "Starting automatic subtitles…"
+                      : "Auto subtitle (English + فارسی)"}
                 </button>
                 <p className="hint">
                   ElevenLabs transcribes the voice, then the 9Router AI model
@@ -1965,177 +1989,175 @@ export default function Editor({
                   </label>
                 </div>
                 {(style.track_id || style.fa_track_id) && (
-                    <>
-                      <div className="control-divider" />
-                      <div className="section-heading">
-                        <h3>Edit caption text</h3>
-                        <span>{cues.length} cues</span>
+                  <>
+                    <div className="control-divider" />
+                    <div className="section-heading">
+                      <h3>Edit caption text</h3>
+                      <span>{cues.length} cues</span>
+                    </div>
+                    {style.track_id && style.fa_track_id && (
+                      <div className="form-actions">
+                        <button
+                          className={
+                            cueRole === "main" ? "primary" : "secondary"
+                          }
+                          onClick={() => {
+                            setCueRole("main");
+                            setCuePage(0);
+                          }}
+                        >
+                          English track
+                        </button>
+                        <button
+                          className={cueRole === "fa" ? "primary" : "secondary"}
+                          onClick={() => {
+                            setCueRole("fa");
+                            setCuePage(0);
+                          }}
+                        >
+                          فارسی track
+                        </button>
                       </div>
-                      {style.track_id && style.fa_track_id && (
-                        <div className="form-actions">
-                          <button
-                            className={
-                              cueRole === "main" ? "primary" : "secondary"
-                            }
-                            onClick={() => {
-                              setCueRole("main");
-                              setCuePage(0);
-                            }}
-                          >
-                            English track
-                          </button>
-                          <button
-                            className={
-                              cueRole === "fa" ? "primary" : "secondary"
-                            }
-                            onClick={() => {
-                              setCueRole("fa");
-                              setCuePage(0);
-                            }}
-                          >
-                            فارسی track
-                          </button>
-                        </div>
-                      )}
-                      <div className="cue-list">
-                        {cues
-                          .slice(cuePage * 20, cuePage * 20 + 20)
-                          .map((cue, index) => {
-                            const i = cuePage * 20 + index;
-                            return (
-                              <div className="cue" key={i}>
-                                <div className="cue-times">
-                                  <Input
-                                    className="h-7 px-1.5 text-[10px]"
-                                    aria-label={`Cue ${i + 1} start`}
-                                    type="number"
-                                    step={0.001}
-                                    min={0}
-                                    value={cue.start}
-                                    onChange={(e) =>
-                                      setCues((old) =>
-                                        old.map((c, n) =>
-                                          n === i
-                                            ? {
-                                                ...c,
-                                                start: Number(e.target.value),
-                                              }
-                                            : c,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <span>→</span>
-                                  <Input
-                                    className="h-7 px-1.5 text-[10px]"
-                                    aria-label={`Cue ${i + 1} end`}
-                                    type="number"
-                                    step={0.001}
-                                    min={0}
-                                    value={cue.end}
-                                    onChange={(e) =>
-                                      setCues((old) =>
-                                        old.map((c, n) =>
-                                          n === i
-                                            ? {
-                                                ...c,
-                                                end: Number(e.target.value),
-                                              }
-                                            : c,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <button
-                                    className="icon-button"
-                                    aria-label="Delete cue"
-                                    onClick={() =>
-                                      setCues((old) =>
-                                        old.filter((_, n) => n !== i),
-                                      )
-                                    }
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                                <Textarea
-                                  className="min-h-14 text-[11px]"
-                                  aria-label={`Cue ${i + 1} text`}
-                                  value={cue.text}
-                                  onFocus={() => seek(cue.start + style.offset)}
+                    )}
+                    <div className="cue-list">
+                      {cues
+                        .slice(cuePage * 20, cuePage * 20 + 20)
+                        .map((cue, index) => {
+                          const i = cuePage * 20 + index;
+                          return (
+                            <div className="cue" key={i}>
+                              <div className="cue-times">
+                                <Input
+                                  className="h-7 px-1.5 text-[10px]"
+                                  aria-label={`Cue ${i + 1} start`}
+                                  type="number"
+                                  step={0.001}
+                                  min={0}
+                                  value={cue.start}
                                   onChange={(e) =>
                                     setCues((old) =>
                                       old.map((c, n) =>
                                         n === i
-                                          ? { ...c, text: e.target.value }
+                                          ? {
+                                              ...c,
+                                              start: Number(e.target.value),
+                                            }
                                           : c,
                                       ),
                                     )
                                   }
                                 />
+                                <span>→</span>
+                                <Input
+                                  className="h-7 px-1.5 text-[10px]"
+                                  aria-label={`Cue ${i + 1} end`}
+                                  type="number"
+                                  step={0.001}
+                                  min={0}
+                                  value={cue.end}
+                                  onChange={(e) =>
+                                    setCues((old) =>
+                                      old.map((c, n) =>
+                                        n === i
+                                          ? {
+                                              ...c,
+                                              end: Number(e.target.value),
+                                            }
+                                          : c,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <button
+                                  className="icon-button"
+                                  aria-label="Delete cue"
+                                  onClick={() =>
+                                    setCues((old) =>
+                                      old.filter((_, n) => n !== i),
+                                    )
+                                  }
+                                >
+                                  <Trash2 size={13} />
+                                </button>
                               </div>
-                            );
-                          })}
-                      </div>
-                      {cues.length > 20 && (
-                        <div className="cue-pagination">
-                          <button
-                            className="secondary"
-                            disabled={cuePage === 0}
-                            onClick={() => setCuePage(cuePage - 1)}
-                          >
-                            Previous
-                          </button>
-                          <small>
-                            {cuePage + 1} / {Math.ceil(cues.length / 20)}
-                          </small>
-                          <button
-                            className="secondary"
-                            disabled={(cuePage + 1) * 20 >= cues.length}
-                            onClick={() => setCuePage(cuePage + 1)}
-                          >
-                            Next
-                          </button>
-                        </div>
-                      )}
-                      <div className="form-actions">
+                              <Textarea
+                                className="min-h-14 text-[11px]"
+                                aria-label={`Cue ${i + 1} text`}
+                                value={cue.text}
+                                onFocus={() => seek(cue.start + style.offset)}
+                                onChange={(e) =>
+                                  setCues((old) =>
+                                    old.map((c, n) =>
+                                      n === i
+                                        ? { ...c, text: e.target.value }
+                                        : c,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                    </div>
+                    {cues.length > 20 && (
+                      <div className="cue-pagination">
                         <button
                           className="secondary"
-                          onClick={() =>
-                            setCues([
-                              ...cues,
-                              {
-                                start: time,
-                                end: Math.min(duration, time + 2),
-                                text: "New caption",
-                              },
-                            ])
-                          }
+                          disabled={cuePage === 0}
+                          onClick={() => setCuePage(cuePage - 1)}
                         >
-                          <Plus size={14} /> Add cue
+                          Previous
                         </button>
+                        <small>
+                          {cuePage + 1} / {Math.ceil(cues.length / 20)}
+                        </small>
                         <button
-                          className="primary"
-                          disabled={!listTrackId}
-                          onClick={() =>
-                            listTrackId &&
-                            saveTrackCues(
-                              listTrackId,
-                              cues,
-                              "Caption text saved.",
-                            )
-                          }
+                          className="secondary"
+                          disabled={(cuePage + 1) * 20 >= cues.length}
+                          onClick={() => setCuePage(cuePage + 1)}
                         >
-                          <Save size={14} /> Save cues
+                          Next
                         </button>
                       </div>
-                      <p className="hint">
-                        To edit on the video itself, pause playback and click a
-                        caption line. Press Ctrl/⌘+Enter or click elsewhere to
-                        save.
-                      </p>
-                    </>
-                  )}
+                    )}
+                    <div className="form-actions">
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          setCues([
+                            ...cues,
+                            {
+                              start: time,
+                              end: Math.min(duration, time + 2),
+                              text: "New caption",
+                            },
+                          ])
+                        }
+                      >
+                        <Plus size={14} /> Add cue
+                      </button>
+                      <button
+                        className="primary"
+                        disabled={!listTrackId}
+                        onClick={() =>
+                          listTrackId &&
+                          saveTrackCues(
+                            listTrackId,
+                            cues,
+                            "Caption text saved.",
+                          )
+                        }
+                      >
+                        <Save size={14} /> Save cues
+                      </button>
+                    </div>
+                    <p className="hint">
+                      To edit on the video itself, pause playback and click a
+                      caption line. Press Ctrl/⌘+Enter or click elsewhere to
+                      save.
+                    </p>
+                  </>
+                )}
               </>
             )}
             {tab === "crop" && (

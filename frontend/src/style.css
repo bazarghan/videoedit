@@ -1481,6 +1481,10 @@ label.check {
   height: 100%;
   position: absolute;
   inset: 0;
+  cursor: pointer;
+}
+.output-frame.crop-drag video {
+  cursor: move;
 }
 .output-frame:fullscreen {
   width: 100vw !important;
@@ -1535,12 +1539,6 @@ label.check {
   padding: 2px 6px !important;
   text-align: inherit;
   overflow: hidden;
-}
-.caption-edit-hint {
-  top: 14px;
-  bottom: auto;
-  background: #11131ad9;
-  border: 1px solid rgba(195, 242, 106, 0.35);
 }
 .watermark-preview {
   position: absolute;
