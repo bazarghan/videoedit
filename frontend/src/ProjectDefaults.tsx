@@ -135,6 +135,7 @@ export default function ProjectDefaultsPanel({
   toast,
 }: Props) {
   const [draft, setDraft] = useState(initial);
+  const [tab, setTab] = useState<"subtitles" | "watermark">("subtitles");
   const [busy, setBusy] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadKey, setUploadKey] = useState(0);
@@ -229,6 +230,26 @@ export default function ProjectDefaultsPanel({
         their own settings. You can also save defaults from the editor’s
         Captions and Mark tabs.
       </p>
+      <div className="defaults-tabs" role="tablist" aria-label="Project defaults">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "subtitles"}
+          className={tab === "subtitles" ? "active" : ""}
+          onClick={() => setTab("subtitles")}
+        >
+          Subtitles
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "watermark"}
+          className={tab === "watermark" ? "active" : ""}
+          onClick={() => setTab("watermark")}
+        >
+          Watermark
+        </button>
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -237,7 +258,7 @@ export default function ProjectDefaultsPanel({
       >
         <fieldset disabled={busy} className="defaults-fields">
           <div className="defaults-columns">
-            <div>
+            <div hidden={tab !== "subtitles"}>
               <h3>Subtitles</h3>
               <Check
                 checked={subtitles.burn}
@@ -410,7 +431,7 @@ export default function ProjectDefaultsPanel({
                 subtitles are ignored unless this option is on.
               </p>
             </div>
-            <div>
+            <div hidden={tab !== "watermark"}>
               <h3>Watermark</h3>
               <SelectField
                 label="Watermark type"

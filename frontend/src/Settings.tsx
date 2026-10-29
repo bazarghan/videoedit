@@ -10,6 +10,8 @@ import {
   Sparkles,
   Mic,
   Languages,
+  SlidersHorizontal,
+  ChevronRight,
 } from "lucide-react";
 import { api, json, size, Settings } from "./types";
 import ProjectDefaultsPanel from "./ProjectDefaults";
@@ -38,6 +40,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     [aiKey, setAiKey] = useState(""),
     [elevenModel, setElevenModel] = useState("scribe_v1"),
     [elevenKey, setElevenKey] = useState(""),
+    [section, setSection] = useState("defaults"),
     [step, setStep] = useState("connect"),
     [code, setCode] = useState(""),
     [password, setPassword] = useState(""),
@@ -80,6 +83,37 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
       </div>
     );
   const connected = settings.telegram_status.connected;
+  const sections = [
+    {
+      id: "defaults",
+      label: "Editing defaults",
+      description: "Caption and watermark presets",
+      icon: SlidersHorizontal,
+    },
+    {
+      id: "subtitles",
+      label: "Auto subtitles",
+      description: "ElevenLabs and 9Router",
+      icon: Sparkles,
+      badge:
+        settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
+          ? "Ready"
+          : "",
+    },
+    {
+      id: "telegram",
+      label: "Telegram",
+      description: "Account and delivery",
+      icon: Send,
+      badge: connected ? "Connected" : "",
+    },
+    {
+      id: "storage",
+      label: "Storage",
+      description: "Space and cleanup",
+      icon: HardDrive,
+    },
+  ];
   return (
     <div className="page settings-page">
       <div className="page-heading compact">
@@ -87,11 +121,43 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           <span className="eyebrow">A WORKSPACE THAT WORKS FOR YOU</span>
           <h1>Settings</h1>
           <p>
-            Set your editing defaults, connect Telegram, and manage storage.
+            Choose a section to manage your defaults, subtitle services,
+            Telegram, and storage.
           </p>
         </div>
       </div>
-      <div className="settings-grid">
+      <div className="settings-shell">
+        <nav className="settings-nav" aria-label="Settings sections">
+          <span className="eyebrow">WORKSPACE SETTINGS</span>
+          {sections.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={
+                  "settings-nav-item " +
+                  (section === item.id ? "active" : "")
+                }
+                aria-current={section === item.id ? "page" : undefined}
+                onClick={() => setSection(item.id)}
+              >
+                <span className="settings-nav-icon">
+                  <Icon size={18} />
+                </span>
+                <span className="settings-nav-copy">
+                  <strong>{item.label}</strong>
+                  <small>{item.description}</small>
+                </span>
+                {item.badge && (
+                  <span className="settings-nav-badge">{item.badge}</span>
+                )}
+                <ChevronRight className="settings-nav-arrow" size={15} />
+              </button>
+            );
+          })}
+        </nav>
+        <div className="settings-content">
+        <div hidden={section !== "defaults"}>
         <ProjectDefaultsPanel
           initial={settings.project_defaults}
           onSaved={(defaults) => {
@@ -102,6 +168,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           onError={onError}
           toast={toast}
         />
+        </div>
+        <div hidden={section !== "subtitles"}>
         <section className="panel">
           <div className="panel-heading">
             <div className="panel-icon">
@@ -229,6 +297,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             </button>
           </form>
         </section>
+        </div>
+        <div hidden={section !== "telegram"}>
         <section className="panel">
           <div className="panel-heading">
             <div className="panel-icon">
@@ -458,6 +528,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             </span>
           </div>
         </section>
+        </div>
+        <div hidden={section !== "storage"}>
         <section className="panel">
           <div className="panel-heading">
             <div className="panel-icon">
@@ -568,6 +640,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             together.
           </p>
         </section>
+        </div>
+        </div>
       </div>
     </div>
   );
