@@ -483,6 +483,22 @@ def ass_escape(text):
     )
 
 
+RTL_EMBED_START = "\u202b"  # RIGHT-TO-LEFT EMBEDDING
+RTL_EMBED_END = "\u202c"  # POP DIRECTIONAL FORMATTING
+
+
+def rtl_embed(text):
+    """Force a right-to-left paragraph direction for libass.
+
+    libass renders every event as a left-to-right paragraph unless the text
+    asks otherwise (see ass_resolve_base_direction), so trailing Persian
+    punctuation ends up on the wrong side. The editor preview uses
+    ``direction: rtl``, so an explicit Unicode RTL embedding makes burned-in
+    captions match it, even when a line starts with Latin text or digits.
+    """
+    return f"{RTL_EMBED_START}{text}{RTL_EMBED_END}"
+
+
 def watermark_windows(watermark, template, duration):
     lower = max(0.0, watermark.start)
     upper = duration if watermark.end is None else min(duration, watermark.end)
@@ -654,13 +670,9 @@ def subtitle_events(row, style, start, end, w, h, fa=False, preserve=False):
         subs.info["Collision"] = "Normal"
         subs.styles["Default"] = subtitle_style(style, h, fa, "Default")
         for cue in json.loads(row["cues"]):
-            text = (
-                cue["text"]
-                .replace("{", "｛")
-                .replace("}", "｝")
-                .replace("\\", "＼")
-                .replace("\n", r"\N")
-            )
+            text = ass_escape(cue["text"])
+            if fa:
+                text = rtl_embed(text)
             subs.events.append(
                 pysubs2.SSAEvent(
                     start=round(cue["start"] * 1000),

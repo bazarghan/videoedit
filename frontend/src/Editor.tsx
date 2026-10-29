@@ -916,7 +916,10 @@ export default function Editor({
           }px ${(fa ? style.fa_shadow : style.shadow) * scale}px #0009`
         : "none",
       direction: fa ? ("rtl" as const) : ("ltr" as const),
-      unicodeBidi: fa ? ("plaintext" as const) : ("normal" as const),
+      // The burned-in ASS uses an explicit RTL embedding for Persian lines.
+      // Keep the preview in the same base direction so punctuation (commas,
+      // periods, question marks) sits on the same side in both.
+      unicodeBidi: fa ? ("isolate" as const) : ("normal" as const),
       alignSelf:
         style.align === "left"
           ? ("flex-start" as const)

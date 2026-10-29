@@ -153,7 +153,8 @@ def test_dual_subtitle_layout_places_english_above_persian(tmp_path):
     assert subs.styles["MainStyle"].primarycolor.b == 255
     assert subs.styles["FaStyle"].primarycolor.r == 255
     assert subs.styles["FaStyle"].primarycolor.g == 255
-    assert subs[0].text == "سلام"
+    assert subs[0].text == f"{media.RTL_EMBED_START}سلام{media.RTL_EMBED_END}"
     assert "\\N" in subs[1].text and "Hello" in subs[1].text
+    assert media.RTL_EMBED_START not in subs[1].text
     s.execute("DELETE FROM subtitles WHERE project_id=?", (project_id,))
     s.execute("DELETE FROM projects WHERE id=?", (project_id,))
