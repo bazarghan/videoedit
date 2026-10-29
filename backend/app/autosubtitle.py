@@ -274,7 +274,7 @@ async def translate_cues(cues, config, ident=None):
 
 async def transcribe_audio(audio_path, config, language, ident=None):
     api_key = (config.get("api_key") or "").strip()
-    model = (config.get("model") or "").strip() or "scribe_v1"
+    model = (config.get("model") or "").strip() or "scribe_v2"
     headers = {"xi-api-key": api_key}
     form = aiohttp.FormData()
     form.add_field("model_id", model)

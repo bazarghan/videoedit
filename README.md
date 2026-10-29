@@ -71,7 +71,7 @@ The caption pipeline follows [Viditor](https://github.com/2000ostd/viditor): the
 
 In **Settings → Auto subtitles**, save both credentials:
 
-- **ElevenLabs API token** for speech-to-text. The default model is `scribe_v1`; the audio is extracted to a small mono MP3 before upload.
+- **ElevenLabs API token** for speech-to-text. The default model is `scribe_v2`; the audio is extracted to a small mono MP3 before upload.
 - **9Router base URL, API token, and model** for translation. 9Router exposes an OpenAI-compatible `/chat/completions` endpoint; its default local address is `http://localhost:20128/v1`. Point this at the router that is reachable from the application container.
 
 Open a project and click **Auto subtitle** in the editor header or the Captions tab. The background job extracts audio, transcribes it with word timing, groups the words into readable cues, translates every cue to Persian in numbered batches, and replaces only the previous automatic tracks. The finished project gets two editable tracks: **English (auto)** and **فارسی (خودکار)**.

@@ -797,7 +797,7 @@ def ai_settings():
 def elevenlabs_settings():
     config = s.setting("elevenlabs", {})
     return {
-        "model": config.get("model", "scribe_v1"),
+        "model": config.get("model", "scribe_v2"),
         "api_key_saved": bool(config.get("api_key")),
     }
 
@@ -864,7 +864,7 @@ async def save_elevenlabs_settings(body: ElevenLabsConfig):
         "elevenlabs",
         {
             "api_key": api_key,
-            "model": body.model.strip() or "scribe_v1",
+            "model": body.model.strip() or "scribe_v2",
         },
     )
     return elevenlabs_settings()

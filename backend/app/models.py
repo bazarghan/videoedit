@@ -73,7 +73,7 @@ class AIConfig(Strict):
 
 class ElevenLabsConfig(Strict):
     api_key: str = Field(default="", max_length=512)
-    model: str = Field(default="scribe_v1", max_length=100)
+    model: str = Field(default="scribe_v2", max_length=100)
     clear_key: bool = False
 
 
