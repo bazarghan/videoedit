@@ -1,5 +1,8 @@
 import { Shield, Trash2 } from "lucide-react";
 import { DownloadProxyDraft } from "./types";
+import { Checkbox } from "./components/ui/checkbox";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
 
 type Props = {
   enabled: boolean;
@@ -25,21 +28,21 @@ export default function DownloadProxyFields({
   }
   return (
     <fieldset className="download-proxy" disabled={busy}>
-      <label className="check proxy-toggle">
-        <input
-          type="checkbox"
+      <Label className="check proxy-toggle">
+        <Checkbox
           checked={enabled}
-          onChange={(e) => onEnabled(e.target.checked)}
+          onCheckedChange={(value) => onEnabled(value === true)}
         />
         <Shield size={16} /> Use SOCKS5 proxy
         <span className="muted">Optional</span>
-      </label>
+      </Label>
       {enabled ? (
         <>
           <div className="form-row proxy-address">
             <label>
               Proxy host
-              <input
+              <Input
+                className="h-9 text-xs"
                 required
                 value={config.host}
                 placeholder="proxy.example.com"
@@ -50,7 +53,8 @@ export default function DownloadProxyFields({
             </label>
             <label>
               Port
-              <input
+              <Input
+                className="h-9 text-xs"
                 required
                 type="number"
                 min={1}
@@ -63,7 +67,8 @@ export default function DownloadProxyFields({
           <div className="form-row">
             <label>
               Proxy username <span className="muted">(optional)</span>
-              <input
+              <Input
+                className="h-9 text-xs"
                 value={config.username}
                 autoComplete="off"
                 maxLength={255}
@@ -72,7 +77,8 @@ export default function DownloadProxyFields({
             </label>
             <label>
               Proxy password <span className="muted">(optional)</span>
-              <input
+              <Input
+                className="h-9 text-xs"
                 type="password"
                 value={config.password}
                 autoComplete="new-password"
@@ -87,16 +93,18 @@ export default function DownloadProxyFields({
             </label>
           </div>
           {config.password_saved && (
-            <label className="check">
-              <input
-                type="checkbox"
+            <Label className="check">
+              <Checkbox
                 checked={config.clear_password}
-                onChange={(e) =>
-                  update({ clear_password: e.target.checked, password: "" })
+                onCheckedChange={(value) =>
+                  update({
+                    clear_password: value === true,
+                    password: "",
+                  })
                 }
-              />{" "}
-              Clear saved password
-            </label>
+              />
+              <span>Clear saved password</span>
+            </Label>
           )}
           <p className="hint">
             Credentials are encrypted. Leave the password blank to keep it for

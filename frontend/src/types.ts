@@ -1,17 +1,47 @@
 export type Cue = { start: number; end: number; text: string };
+export type WatermarkText = {
+  text: string;
+  font_family: string;
+  font_size: number;
+  bold: boolean;
+  color: string;
+  opacity: number;
+  alignment: "left" | "center" | "right";
+};
+export type WatermarkTemplate = {
+  rows: WatermarkText[][];
+  gap_horizontal: number;
+  gap_vertical: number;
+  border_color: string;
+  border_thickness: number;
+  decay_time: number;
+  replication_count: number;
+  repeat: boolean;
+};
 export type Edit = {
   start: number;
   end: number;
   subtitles: {
     track_id: string;
+    fa_track_id: string;
     burn: boolean;
     preserve_ass: boolean;
+    soft: boolean;
     font: string;
     size: number;
+    bold: boolean;
     color: string;
     outline_color: string;
     outline: number;
     shadow: number;
+    fa_font: string;
+    fa_size: number;
+    fa_bold: boolean;
+    fa_color: string;
+    fa_outline_color: string;
+    fa_outline: number;
+    fa_shadow: number;
+    gap: number;
     box: boolean;
     box_opacity: number;
     position: string;
@@ -22,6 +52,7 @@ export type Edit = {
   crop: { ratio: string; mode: string; x: number; y: number };
   watermark: {
     kind: string;
+    template: WatermarkTemplate | null;
     text: string;
     asset_id: string;
     x: number;
@@ -61,7 +92,7 @@ export type Metadata = {
   subtitles: unknown[];
 };
 export type ProjectDefaults = {
-  subtitles: Omit<Edit["subtitles"], "track_id">;
+  subtitles: Omit<Edit["subtitles"], "track_id" | "fa_track_id">;
   watermark: Edit["watermark"];
 };
 export type Project = {
@@ -72,10 +103,6 @@ export type Project = {
   metadata: Metadata;
   edit: Edit;
   has_source: boolean;
-  auto_preview: boolean;
-  has_preview: boolean;
-  preview_audio_track: number;
-  source_playback_type: string | null;
   has_thumbnail: boolean;
   subtitles?: {
     id: string;
@@ -83,6 +110,8 @@ export type Project = {
     language: string;
     codec: string;
     editable: number;
+    role?: string;
+    origin?: string;
   }[];
   assets?: { id: string; kind: string; name: string }[];
 };
@@ -129,6 +158,15 @@ export type Settings = {
     free: number;
     limit_gb: number;
     categories: Record<string, number>;
+  };
+  ai: {
+    base_url: string;
+    model: string;
+    api_key_saved: boolean;
+  };
+  elevenlabs: {
+    model: string;
+    api_key_saved: boolean;
   };
 };
 export type DownloadProxy = {
@@ -177,11 +215,21 @@ export function clock(seconds: number = 0) {
   const s = Math.max(0, seconds);
   return `${Math.floor(s / 3600) ? Math.floor(s / 3600) + ":" : ""}${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 }
+export function timecode(seconds: number = 0) {
+  const total = Math.max(0, seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const secs = total % 60;
+  const base = `${String(minutes).padStart(2, "0")}:${secs.toFixed(3).padStart(6, "0")}`;
+  return hours ? `${hours}:${base}` : base;
+}
 export const fonts: [string, string][] = [
+  ["Arial", "Arial"],
   ["Vazirmatn", "Vazirmatn"],
   ["Shabnam", "Shabnam"],
   ["Sahel", "Sahel"],
   ["IRANYekanWeb", "IRAN Yekan"],
+  ["IRANYekanWeb ExtraBold", "IRAN Yekan ExtraBold"],
   ["DejaVu Sans", "DejaVu Sans"],
   ["DejaVu Serif", "DejaVu Serif"],
   ["Liberation Sans", "Liberation Sans"],

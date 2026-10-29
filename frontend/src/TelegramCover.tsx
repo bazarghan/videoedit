@@ -1,6 +1,7 @@
 import { RefObject, useEffect, useState } from "react";
 import { Image, LoaderCircle } from "lucide-react";
 import { api, Clip, Job, json } from "./types";
+import { Input } from "./components/ui/input";
 
 type Props = {
   clip: Clip;
@@ -91,7 +92,8 @@ export default function TelegramCover({
           </span>
           <label>
             Preview frame (seconds)
-            <input
+            <Input
+              className="h-9 text-xs"
               type="number"
               value={time}
               min={0}

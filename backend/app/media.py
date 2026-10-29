@@ -171,48 +171,12 @@ async def probe(path):
     }
 
 
-def browser_source_type(info, audio_track=0):
-    # Browsers choose their own audio track; use a generated single-track preview
-    # whenever the source has multiple tracks or another track was selected.
-    audio = info.get("audio", [])
-    if audio_track != 0 or len(audio) > 1:
-        return None
-    codec = info.get("video_codec")
-    pixel = info.get("pixel_format")
-    if info.get("browser_container") == "mp4":
-        if audio and audio[0]["codec"] != "aac":
-            return None
-        if codec == "h264" and pixel in ("yuv420p", "yuvj420p"):
-            video = "avc1"
-        elif codec == "hevc" and pixel in ("yuv420p", "yuv420p10le"):
-            video = info.get("video_codec_tag")
-            if video not in ("hvc1", "hev1"):
-                return None
-        else:
-            return None
-        codecs = [video] + (["mp4a.40.2"] if audio else [])
-        return 'video/mp4; codecs="' + ", ".join(codecs) + '"'
-    if info.get("browser_container") == "webm":
-        if codec not in ("vp8", "vp9") or pixel != "yuv420p":
-            return None
-        if audio and audio[0]["codec"] not in ("opus", "vorbis"):
-            return None
-        codecs = [codec] + ([audio[0]["codec"]] if audio else [])
-        return 'video/webm; codecs="' + ", ".join(codecs) + '"'
-    return None
-
-
 def original_media_type(info):
     if info.get("browser_container") == "webm":
         return "video/webm"
     if "mp4" in info.get("format", "").split(","):
         return "video/mp4"
     return "video/x-matroska"
-
-
-def cached_preview(project, audio_track=0):
-    path = s.DATA / "previews" / (project["id"] + f"-a{audio_track}.mp4")
-    return path if path.is_file() else None
 
 
 def telegram_compatible(info):
@@ -322,7 +286,14 @@ async def update_cover(clip, timestamp=None, ident=None):
 
 
 async def add_subtitle(
-    project_id, path, title, language="", codec="subrip", original_ass=None
+    project_id,
+    path,
+    title,
+    language="",
+    codec="subrip",
+    original_ass=None,
+    role="",
+    origin="",
 ):
     try:
         subs = await asyncio.to_thread(pysubs2.load, str(path), encoding="utf-8-sig")
@@ -347,8 +318,19 @@ async def add_subtitle(
         ass = str(s.DATA / "subtitles" / (ident + ".ass"))
         await asyncio.to_thread(subs.save, ass)
     s.execute(
-        "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?)",
-        (ident, project_id, title[:150], language, codec, json.dumps(cues), ass, 1),
+        "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            ident,
+            project_id,
+            title[:150],
+            language,
+            codec,
+            json.dumps(cues),
+            ass,
+            1,
+            role,
+            origin,
+        ),
     )
     return ident
 
@@ -374,7 +356,7 @@ async def ingest(project_id, path, ident):
         )
         if not track["editable"]:
             s.execute(
-                "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     s.uid(),
                     project_id,
@@ -384,6 +366,8 @@ async def ingest(project_id, path, ident):
                     "[]",
                     None,
                     0,
+                    "",
+                    "embedded",
                 ),
             )
             continue
@@ -404,19 +388,32 @@ async def ingest(project_id, path, ident):
                 ],
                 ident,
             )
+            language = (track["language"] or "").lower().split("-")[0]
+            role = (
+                "fa"
+                if language in ("fa", "per", "fas", "persian")
+                else "main"
+                if language in ("en", "eng", "english")
+                else ""
+            )
             await add_subtitle(
-                project_id, dest, title, track["language"], track["codec"]
+                project_id,
+                dest,
+                title,
+                track["language"],
+                track["codec"],
+                role=role,
+                origin="embedded",
             )
         finally:
             dest.unlink(missing_ok=True)
-    tracks = s.rows(
-        "SELECT id FROM subtitles WHERE project_id=? AND editable=1", (project_id,)
-    )
     row = s.one("SELECT edit FROM projects WHERE id=?", (project_id,))
     edit = Edit.model_validate(json.loads(row["edit"])).model_dump()
     edit["end"] = meta["duration"]
-    if tracks:
-        edit["subtitles"]["track_id"] = tracks[0]["id"]
+    # Embedded source subtitles are kept available but are not selected
+    # automatically: soft subtitles are off by default, so a new project uses
+    # the editable/automatic subtitle tracks instead unless the operator
+    # explicitly selects a source track or enables soft subtitles.
     s.execute("UPDATE projects SET edit=? WHERE id=?", (json.dumps(edit), project_id))
     thumb = s.DATA / "previews" / (project_id + ".jpg")
     try:
@@ -443,82 +440,7 @@ async def ingest(project_id, path, ident):
         )
     except ValueError:
         pass
-    preference = s.one("SELECT auto_preview FROM projects WHERE id=?", (project_id,))
-    if browser_source_type(meta) or not preference["auto_preview"]:
-        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project_id,))
-    else:
-        s.job("proxy", project_id, {"audio_track": 0, "automatic": True})
-
-
-async def proxy(project, payload, ident):
-    meta = json.loads(project["metadata"])
-    audio_track = int(payload.get("audio_track", 0))
-    if (
-        payload.get("automatic", not payload.get("force", False))
-        and not project["auto_preview"]
-    ):
-        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project["id"],))
-        return
-    if meta["audio"] and audio_track >= len(meta["audio"]):
-        raise ValueError("That audio track does not exist.")
-    if not payload.get("force") and browser_source_type(meta, audio_track):
-        s.execute("UPDATE projects SET status='ready' WHERE id=?", (project["id"],))
-        return
-    dest = s.DATA / "previews" / (project["id"] + f"-a{audio_track}.mp4")
-    if dest.exists():
-        s.execute(
-            "UPDATE projects SET preview=?,status=? WHERE id=?",
-            (str(dest), "ready", project["id"]),
-        )
-        return
-    temp = dest.with_suffix(".part.mp4")
-    args = [
-        "ffmpeg",
-        "-hide_banner",
-        "-v",
-        "error",
-        "-y",
-        "-i",
-        project["source"],
-        "-map",
-        "0:v:0",
-    ]
-    if meta["audio"]:
-        args += ["-map", f"0:a:{audio_track}"]
-    args += [
-        "-vf",
-        "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "25",
-        "-threads",
-        "3",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        "-progress",
-        "pipe:1",
-        "-nostats",
-        str(temp),
-    ]
-    try:
-        s.space_for(max(meta["size"] // 2, 50 * 1024**2))
-        await run(args, ident, meta["duration"])
-        temp.replace(dest)
-        s.execute(
-            "UPDATE projects SET preview=?,status=? WHERE id=?",
-            (str(dest), "ready", project["id"]),
-        )
-    finally:
-        temp.unlink(missing_ok=True)
+    s.execute("UPDATE projects SET status='ready' WHERE id=?", (project_id,))
 
 
 def dimensions(meta, edit):
@@ -544,47 +466,193 @@ def ass_color(color, opacity=1):
     )
 
 
-def make_subs(project_id, edit, start, end, w, h, work, snapshot=None):
-    style = edit.subtitles
-    row = snapshot or s.one(
-        "SELECT * FROM subtitles WHERE id=? AND project_id=?",
-        (style.track_id, project_id),
+def ass_override_color(color):
+    return f"&H{int(color[5:7], 16):02X}{int(color[3:5], 16):02X}{int(color[1:3], 16):02X}&"
+
+
+def ass_override_alpha(opacity):
+    return f"&H{round((1 - opacity) * 255):02X}&"
+
+
+def ass_escape(text):
+    return (
+        text.replace("{", "｛")
+        .replace("}", "｝")
+        .replace("\\", "＼")
+        .replace("\n", r"\N")
     )
-    if not row:
-        raise ValueError("The selected subtitle track no longer exists.")
-    if not row["editable"]:
-        raise ValueError(
-            "Image subtitles cannot be edited or burned in. Upload text subtitles instead."
+
+
+def watermark_windows(watermark, template, duration):
+    lower = max(0.0, watermark.start)
+    upper = duration if watermark.end is None else min(duration, watermark.end)
+    if upper <= lower:
+        return []
+    if not template.repeat:
+        return [(lower, upper)]
+    decay = template.decay_time
+    count = template.replication_count
+    usable = upper - lower
+    stepping = max(0.0, (usable - decay * count) / count)
+    windows = []
+    for index in range(count):
+        start = lower + stepping / 2 + index * (stepping + decay)
+        end = min(upper, start + decay)
+        if start < upper and end > start:
+            windows.append((start, end))
+    return windows
+
+
+def make_watermark(watermark, duration, w, h, work):
+    template = watermark.template
+    if not template:
+        return None
+    rows = [[element for element in row if element.text] for row in template.rows]
+    rows = [row for row in rows if row]
+    windows = watermark_windows(watermark, template, duration)
+    if not rows or not windows:
+        return None
+    scale = h / 1080
+    first = rows[0][0]
+    subs = pysubs2.SSAFile()
+    subs.info["PlayResX"], subs.info["PlayResY"] = str(w), str(h)
+    subs.styles["Watermark"] = pysubs2.SSAStyle(
+        fontname=first.font_family,
+        fontsize=first.font_size * scale,
+        primarycolor=ass_color(first.color, first.opacity),
+        outlinecolor=ass_color(template.border_color),
+        outline=template.border_thickness * scale,
+        shadow=0,
+        borderstyle=1,
+        alignment=pysubs2.Alignment.MIDDLE_CENTER,
+        marginl=0,
+        marginr=0,
+        marginv=0,
+    )
+
+    def tags(element):
+        result = (
+            f"\\fn{element.font_family}"
+            f"\\fs{element.font_size * scale:.1f}"
+            f"\\b{1 if element.bold else 0}"
+            f"\\c{ass_override_color(element.color)}"
+            f"\\alpha{ass_override_alpha(element.opacity)}"
         )
-    if style.preserve_ass and row["ass_path"]:
+        if template.border_thickness:
+            result += (
+                f"\\bord{template.border_thickness * scale:.1f}"
+                f"\\3c{ass_override_color(template.border_color)}"
+            )
+        else:
+            result += "\\bord0"
+        return result
+
+    def estimate_width(element):
+        return len(element.text) * element.font_size * scale * 0.62
+
+    margin = watermark.margin * scale
+    center_x = margin + (w - 2 * margin) * watermark.x
+    center_y = margin + (h - 2 * margin) * watermark.y
+    row_heights = [
+        max(element.font_size for element in row) * scale * 1.2 for row in rows
+    ]
+    gap = template.gap_vertical * scale
+    total_height = sum(row_heights) + gap * (len(rows) - 1)
+    top = center_y - total_height / 2
+    columns = max(len(row) for row in rows)
+    column_widths = [
+        max(estimate_width(row[index]) for row in rows if len(row) > index)
+        for index in range(columns)
+    ]
+    grid_width = sum(column_widths) + template.gap_horizontal * scale * (columns - 1)
+    grid_left = center_x - grid_width / 2
+    placements = []
+    for row, row_height in zip(rows, row_heights):
+        row_center = top + row_height / 2
+        if columns == 1:
+            placements.append((row[0], center_x, row_center, "\\an5"))
+        else:
+            for index, element in enumerate(row):
+                column_left = grid_left + sum(column_widths[:index])
+                column_left += template.gap_horizontal * scale * index
+                anchor = {
+                    "left": ("\\an4", column_left),
+                    "center": ("\\an5", column_left + column_widths[index] / 2),
+                    "right": ("\\an6", column_left + column_widths[index]),
+                }[element.alignment]
+                placements.append((element, anchor[1], row_center, anchor[0]))
+        top += row_height + gap
+    for element, x, y, anchor in placements:
+        text = f"{{{anchor}\\pos({x:.1f},{y:.1f})}}{{{tags(element)}}}{ass_escape(element.text)}"
+        for start, end in windows:
+            subs.events.append(
+                pysubs2.SSAEvent(
+                    start=round(start * 1000),
+                    end=round(end * 1000),
+                    style="Watermark",
+                    text=text,
+                )
+            )
+    dest = work / "watermark.ass"
+    subs.save(str(dest))
+    return dest
+
+
+def subtitle_style(style, h, fa=False, name="Default"):
+    """Build one ASS style using the same 1080-pixel reference as the editor."""
+    scale = h / 1080
+    alignment = {"bottom": 0, "middle": 3, "top": 6}[style.position] + {
+        "left": 1,
+        "center": 2,
+        "right": 3,
+    }[style.align]
+    if fa:
+        font = style.fa_font
+        size = style.fa_size
+        bold = style.fa_bold
+        color = style.fa_color
+        outline_color = style.fa_outline_color
+        outline = style.fa_outline
+        shadow = style.fa_shadow
+    else:
+        font = style.font
+        size = style.size
+        bold = style.bold
+        color = style.color
+        outline_color = style.outline_color
+        outline = style.outline
+        shadow = style.shadow
+    substyle = pysubs2.SSAStyle(
+        fontname=font,
+        fontsize=size * scale,
+        bold=bold,
+        primarycolor=ass_color(color),
+        outlinecolor=ass_color(outline_color),
+        backcolor=ass_color("#000000", style.box_opacity if style.box else 0.6),
+        outline=outline * scale,
+        shadow=shadow * scale,
+        borderstyle=3 if style.box else 1,
+        alignment=pysubs2.Alignment(alignment),
+        marginl=round(style.margin * scale),
+        marginr=round(style.margin * scale),
+        marginv=round(style.margin * scale),
+    )
+    # Opaque boxes use OutlineColour in libass.
+    if style.box:
+        substyle.outlinecolor = ass_color(outline_color, style.box_opacity)
+    return substyle
+
+
+def subtitle_events(row, style, start, end, w, h, fa=False, preserve=False):
+    """Load one track, optionally preserving an uploaded ASS file, then trim it."""
+    if preserve and row["ass_path"]:
         subs = pysubs2.load(row["ass_path"])
     else:
         subs = pysubs2.SSAFile()
         subs.info["PlayResX"], subs.info["PlayResY"] = str(w), str(h)
-        scale = h / 1080
-        alignment = {"bottom": 0, "middle": 3, "top": 6}[style.position] + {
-            "left": 1,
-            "center": 2,
-            "right": 3,
-        }[style.align]
-        substyle = pysubs2.SSAStyle(
-            fontname=style.font,
-            fontsize=style.size * scale,
-            primarycolor=ass_color(style.color),
-            outlinecolor=ass_color(style.outline_color),
-            backcolor=ass_color("#000000", style.box_opacity if style.box else 0.6),
-            outline=style.outline * scale,
-            shadow=style.shadow * scale,
-            borderstyle=3 if style.box else 1,
-            alignment=pysubs2.Alignment(alignment),
-            marginl=round(style.margin * scale),
-            marginr=round(style.margin * scale),
-            marginv=round(style.margin * scale),
-        )
-        # Opaque boxes use OutlineColour in libass.
-        if style.box:
-            substyle.outlinecolor = ass_color(style.outline_color, style.box_opacity)
-        subs.styles["Default"] = substyle
+        subs.info["ScaledBorderAndShadow"] = "yes"
+        subs.info["Collision"] = "Normal"
+        subs.styles["Default"] = subtitle_style(style, h, fa, "Default")
         for cue in json.loads(row["cues"]):
             text = (
                 cue["text"]
@@ -608,6 +676,85 @@ def make_subs(project_id, edit, start, end, w, h, work, snapshot=None):
             event.end = round((min(b, end) - start) * 1000)
             events.append(event)
     subs.events = events
+    return subs
+
+
+def make_subs(
+    project_id,
+    edit,
+    start,
+    end,
+    w,
+    h,
+    work,
+    snapshot=None,
+    snapshot_fa=None,
+):
+    style = edit.subtitles
+    main_row = snapshot or (
+        s.one(
+            "SELECT * FROM subtitles WHERE id=? AND project_id=?",
+            (style.track_id, project_id),
+        )
+        if style.track_id
+        else None
+    )
+    fa_row = snapshot_fa or (
+        s.one(
+            "SELECT * FROM subtitles WHERE id=? AND project_id=?",
+            (style.fa_track_id, project_id),
+        )
+        if style.fa_track_id
+        else None
+    )
+    if not main_row and not fa_row:
+        raise ValueError("The selected subtitle track no longer exists.")
+    for row in (main_row, fa_row):
+        if row and not row["editable"]:
+            raise ValueError(
+                "Image subtitles cannot be edited or burned in. Upload text subtitles instead."
+            )
+    if fa_row:
+        # Viditor renders the Farsi line first at the bottom and the main
+        # language above it. The invisible gap line gives libass room to stack
+        # wrapped Farsi text without a fixed margin.
+        fa_subs = subtitle_events(fa_row, style, start, end, w, h, fa=True)
+        main_subs = (
+            subtitle_events(main_row, style, start, end, w, h)
+            if main_row
+            else None
+        )
+        merged = pysubs2.SSAFile()
+        merged.info["PlayResX"], merged.info["PlayResY"] = str(w), str(h)
+        merged.info["ScaledBorderAndShadow"] = "yes"
+        merged.info["Collision"] = "Normal"
+        merged.styles.pop("Default", None)
+        merged.styles["FaStyle"] = subtitle_style(style, h, fa=True, name="FaStyle")
+        merged.styles["MainStyle"] = subtitle_style(
+            style, h, fa=False, name="MainStyle"
+        )
+        for event in fa_subs:
+            event.style = "FaStyle"
+            merged.events.append(event)
+        if main_subs:
+            gap = style.gap * h / 1080
+            for event in main_subs:
+                event.style = "MainStyle"
+                event.text += f"\\N{{\\alpha&HFF&\\fs{gap:.1f}}}._"
+                merged.events.append(event)
+        subs = merged
+    else:
+        row = main_row or fa_row
+        subs = subtitle_events(
+            row,
+            style,
+            start,
+            end,
+            w,
+            h,
+            fa=main_row is None,
+            preserve=style.preserve_ass,
+        )
     dest = work / "captions.ass"
     subs.save(str(dest))
     return dest
@@ -667,12 +814,29 @@ async def render(project, payload, ident):
             raise ValueError("The background music no longer exists.")
         music_index = next_input
         args += ["-stream_loop", "-1", "-i", asset["path"]]
+    soft_sub_index = None
+    if edit.subtitles.soft:
+        text_tracks = [
+            track
+            for track in meta.get("subtitles", [])
+            if track.get("codec") in TEXT_SUBS and track.get("editable")
+        ]
+        if not text_tracks:
+            raise ValueError(
+                "This video has no text soft subtitles. Turn off soft subtitles "
+                "to use the editable English and Persian tracks."
+            )
+        soft_sub_index = text_tracks[0]["index"]
     crop = edit.crop
     if crop.mode == "fill":
         vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}:(iw-ow)*{crop.x}:(ih-oh)*{crop.y},setsar=1"
     else:
         vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad={w}:{h}:(ow-iw)*{crop.x}:(oh-ih)*{crop.y}:black,setsar=1"
-    if edit.subtitles.burn and edit.subtitles.track_id:
+    if (
+        edit.subtitles.burn
+        and not edit.subtitles.soft
+        and (edit.subtitles.track_id or edit.subtitles.fa_track_id)
+    ):
         subs = make_subs(
             project["id"],
             edit,
@@ -682,11 +846,16 @@ async def render(project, payload, ident):
             h,
             work,
             payload.get("subtitle_snapshot"),
+            payload.get("subtitle_snapshot_fa"),
         )
         vf += f",ass=filename='{filter_path(subs)}':fontsdir='{filter_path(FONT_DIR)}'"
     visibility_end = duration if wm.end is None else min(wm.end, duration)
     enable = f"between(t,{wm.start},{visibility_end})"
-    if wm.kind == "text" and wm.text:
+    if wm.kind == "text" and wm.template:
+        subs = make_watermark(wm, duration, w, h, work)
+        if subs:
+            vf += f",ass=filename='{filter_path(subs)}':fontsdir='{filter_path(FONT_DIR)}'"
+    elif wm.kind == "text" and wm.text:
         textfile = work / "watermark.txt"
         textfile.write_text(wm.text)
         fontpath = await font_path(wm.font)
@@ -737,6 +906,8 @@ async def render(project, payload, ident):
     ]
     if audio:
         args += ["-map", audio]
+    if soft_sub_index is not None:
+        args += ["-map", f"0:{soft_sub_index}", "-c:s", "mov_text"]
     preset, crf = {
         "fast": ("veryfast", 23),
         "balanced": ("medium", 21),

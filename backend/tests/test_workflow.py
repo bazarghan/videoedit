@@ -113,14 +113,8 @@ def test_complete_workflow(footage, tmp_path):
         p = client.get("/api/projects/" + pid).json()
         assert p["metadata"]["width"] == 640 and p["subtitles"][0]["editable"] == 1
         assert p["metadata"]["video_codec"] == "hevc"
-        proxy = next(
-            j
-            for j in client.get("/api/jobs").json()
-            if j["kind"] == "proxy" and j["project_id"] == pid
-        )
-        wait_job(client, proxy["id"])
         playback = client.get(
-            f"/api/media/project/{pid}/preview", headers={"Range": "bytes=0-99"}
+            f"/api/media/project/{pid}/source", headers={"Range": "bytes=0-99"}
         )
         assert playback.status_code == 206 and len(playback.content) == 100
         assert playback.headers["content-range"].startswith("bytes 0-99/")
@@ -128,6 +122,9 @@ def test_complete_workflow(footage, tmp_path):
         cue_result = client.get(f"/api/projects/{pid}/subtitles/{track}").json()
         assert cue_result["cues"][0]["text"] == "A moment worth keeping"
         edit = p["edit"]
+        # Source soft subtitles are not selected automatically.
+        assert edit["subtitles"]["track_id"] == ""
+        edit["subtitles"]["track_id"] = track
         edit.update(start=2.25, end=6.75, filename="verified-vertical", resolution=720)
         edit["subtitles"].update(
             font="Vazirmatn", size=72, color="#ffff00", offset=0.25
@@ -262,7 +259,7 @@ def test_complete_workflow(footage, tmp_path):
         # Untrusted origins cannot invoke mutations even with a valid cookie.
         assert (
             client.post(
-                "/api/settings/cleanup/previews",
+                "/api/settings/cleanup/thumbnails",
                 headers={"Origin": "https://evil.example"},
             ).status_code
             == 403

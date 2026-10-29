@@ -2,7 +2,7 @@
 
 A private, self-hosted clip studio. Import a video, choose a moment, shape the frame, style the captions, and export a finished MP4. Send an export through your own Telegram account when you choose.
 
-Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Imports default to trying the original in your browser, including MKV files. Choose **Generate browser preview automatically** to enable conversion when needed, or use **Generate browser preview** in the editor later. The automatic setting can be changed per project; when off, unsupported playback never starts a conversion by itself. Embedded text subtitles remain editable in either mode.
+Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Imports try the original in your browser; if the browser cannot play its codecs or container, trimming, captions, and renders still use the original. Embedded text subtitles remain editable either way.
 
 ## Features
 
@@ -12,9 +12,14 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
 - Draggable trim handles, exact time fields, and cuts re-encoded for precision.
 - Embedded and external SRT, ASS/SSA, and WebVTT text subtitles, cue editing, timing offsets, font/color/outline/shadow controls, background boxes, alignment, and margins.
-- Bundled Vazirmatn, Shabnam, Sahel, and IRAN Yekan (IRANYekanWeb) Persian fonts for captions and text watermarks, with the same font files used in browser previews and exports.
+- Dual English + Persian subtitles in Viditor's exact layout: bold white English Arial above, yellow IRAN Yekan ExtraBold Persian below, with the same gap and bottom margins.
+- One-click **Auto subtitle** using ElevenLabs Scribe for English timing and an OpenAI-compatible 9Router model for the Persian translation.
+- Pause the player, click a caption on the video, and edit its text in place; save with Ctrl/⌘+Enter or by clicking away.
+- Source soft subtitles are ignored by default so the editable/automatic tracks win. Enable **Use the video's original soft subtitles** to keep the embedded text track instead.
+- Bundled Vazirmatn, Shabnam, Sahel, IRAN Yekan (IRANYekanWeb), and IRAN Yekan ExtraBold Persian fonts for captions and text watermarks, with the same font files used in the editor and exports.
 - Original, landscape, vertical, square, and portrait frames with fit/fill and visual positioning.
-- Text and PNG/JPEG watermarks, drag positioning, corner presets, opacity, and timed visibility.
+- Text and PNG/JPEG watermarks, drag positioning, corner presets, opacity, timed visibility, and multi-element text templates with rows, per-element fonts, sizes, colours, weight, and alignment.
+- A built-in default watermark template with the centred **TELEGRAM: @hl_clips** mark, repeating for two seconds five times across the clip.
 - Original audio selection and volume, mute, background music, looping, and fades.
 - Six-second rendered previews and MP4 exports with H.264, AAC, and fast-start metadata.
 - Encrypted Telegram API credentials and authorized sessions, code/2FA sign-in, destinations, captions, playable-video/file sending, progress, and retry.
@@ -49,7 +54,7 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 ## Create a clip
 
 1. Click **New project** and paste a direct media URL or upload a video. Website page URLs, platform scraping, DRM, and adaptive playlists are outside the importer.
-2. Wait for inspection. The original video plays if your browser supports it. If it cannot play, use **Generate browser preview** below the player. You can enable or disable automatic preview generation there at any time. Select a subtitle track in **Captions**; text subtitles appear over the player.
+2. Wait for inspection. The original video plays if your browser supports its codecs and container. In **Captions**, click **Auto subtitle** for English + Persian, or choose/upload your own tracks. Embedded source subtitles are listed but stay off by default; enable **Use the video's original soft subtitles** to use them instead. If the original cannot play, you can still trim and render it.
 3. Drag the timeline handles or enter exact start/end seconds. Use **Set start here**, **Set end here**, and loop to refine the selection.
 4. Choose a frame in **Frame**. Fill crops the edges; Fit retains the whole source with black padding. Drag to reframe or use the position sliders.
 5. Style captions, add a watermark in **Mark**, and choose music or an audio track in **Audio**. Save cue text changes with **Save cues**; other valid edit settings save automatically.
@@ -58,7 +63,22 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 
 Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge; the default 1920-pixel edge produces Full HD landscape or vertical clips. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
 
-In **Settings → Project defaults**, choose the subtitle font, size, colors, outline, shadow, background, positioning, and timing offset, plus the watermark type, text or image, font, size, opacity, placement, and visibility times. Click **Save project defaults** to use them for each new URL or uploaded-video import. In the editor, **Save subtitle settings as defaults** and **Save watermark settings as defaults** update that section independently. Existing projects keep their settings. Image watermarks are copied into new projects and remain available even if the original project is deleted. **Reset to built-in defaults** restores the original presets for future imports.
+In **Settings → Project defaults**, choose the English and Persian subtitle fonts, sizes, weights, colors, outlines, gap, background, positioning, soft-subtitle behavior, and timing offset, plus the watermark type, text or image, multi-element template, placement, and visibility times. Text watermarks use a row-based template: each element has its own text, font, size, bold weight, colour, opacity, and alignment, and the template controls gaps, border, and timed repetition. The built-in default mirrors the Viditor template: a centred, bold Arial **TELEGRAM: @hl_clips** mark at 20% opacity, shown for two seconds five times, with Arial bold captions. Click **Save project defaults** to use them for each new URL or uploaded-video import. In the editor, **Save subtitle settings as defaults** and **Save watermark settings as defaults** update that section independently. Existing projects keep their settings. Image watermarks are copied into new projects and remain available even if the original project is deleted. **Reset to built-in defaults** restores the original presets for future imports.
+
+## Automatic English and Persian subtitles
+
+The caption pipeline follows [Viditor](https://github.com/2000ostd/viditor): the main English track is rendered above the Persian track, the English line is white Arial bold, and the Persian line is yellow IRAN Yekan ExtraBold. Both use the 1080-pixel reference used by the rest of the editor, so the 16 px / 24 px / 6 px Viditor values become 60 px / 90 px / 22.5 px at a 1080-pixel height.
+
+In **Settings → Auto subtitles**, save both credentials:
+
+- **ElevenLabs API token** for speech-to-text. The default model is `scribe_v1`; the audio is extracted to a small mono MP3 before upload.
+- **9Router base URL, API token, and model** for translation. 9Router exposes an OpenAI-compatible `/chat/completions` endpoint; its default local address is `http://localhost:20128/v1`. Point this at the router that is reachable from the application container.
+
+Open a project and click **Auto subtitle** in the editor header or the Captions tab. The background job extracts audio, transcribes it with word timing, groups the words into readable cues, translates every cue to Persian in numbered batches, and replaces only the previous automatic tracks. The finished project gets two editable tracks: **English (auto)** and **فارسی (خودکار)**.
+
+To edit while watching, pause the player and click a caption line on the video. The line becomes an in-place text field; press Ctrl/⌘+Enter or click elsewhere to save. Press Escape to cancel. The same cues are available as a paginated list in the Captions tab, with separate English and Persian track buttons.
+
+Source soft subtitles are **off by default**. New imports keep embedded subtitle tracks available in the selector but do not select, burn, or display them automatically. Enable **Use the video's original soft subtitles** to keep the embedded text track in the preview and export; rendered MP4s then contain a `mov_text` soft track instead of burned-in captions. If the browser cannot expose the source track, the export still carries it.
 
 ## SOCKS5 downloads
 
@@ -84,7 +104,7 @@ Destinations include Saved Messages and up to 200 recent dialogs; Telegram valid
 
 ## Operations
 
-Configuration lives in `.env`. Persistent state lives in `data/`: SQLite, encrypted settings, the encryption key, originals, previews, subtitles, assets, and exports. Do not commit either directory or file. Compose configures startup after a reboot through `restart: unless-stopped`.
+Configuration lives in `.env`. Persistent state lives in `data/`: SQLite, encrypted settings, the encryption key, originals, thumbnails, subtitles, assets, and exports. Do not commit either directory or file. Compose configures startup after a reboot through `restart: unless-stopped`.
 
 ```sh
 # Status and recent diagnostic logs (access logging is disabled)
@@ -111,7 +131,7 @@ To reset the administrator password without exposing it in shell history:
 docker compose exec app python -c 'from getpass import getpass; from pwdlib import PasswordHash; from app import store; p=getpass("New password: "); assert len(p)>=12; store.set_setting("admin_hash", PasswordHash.recommended().hash(p)); store.execute("DELETE FROM sessions")'
 ```
 
-Cleanup is manual. Removing originals prevents future rendering of those projects. Removing cached previews leaves originals available for regeneration. Removing rendered clips deletes those exports. Active and stopping jobs block destructive file operations.
+Cleanup is manual. Removing originals prevents future rendering of those projects. Removing thumbnails deletes the project cover images. Removing rendered clips deletes those exports. Active and stopping jobs block destructive file operations.
 
 ## Development and verification
 
@@ -139,14 +159,14 @@ Tests generate real footage with embedded subtitles and audio, import it, verify
 
 ## Design and practical limits
 
-A single FastAPI process owns persistent SQLite queues and three background lanes: download/inspection, preview/render, and Telegram upload. CPU-heavy work runs in FFmpeg subprocesses. Do not scale this application to multiple web workers against the same database without adding a coordinated external queue.
+A single FastAPI process owns persistent SQLite queues and three background lanes: download/inspection, render/cover, and Telegram upload. CPU-heavy work runs in FFmpeg subprocesses. Do not scale this application to multiple web workers against the same database without adding a coordinated external queue.
 
 The editor provides a responsive approximation of libass captions. Original ASS styles, animated effects, complex shaping, outline rendering, and background boxes can differ from the browser overlay; rendered previews provide the exact output. With **Preserve original ASS styling** enabled, original ASS events and styles are used, so custom cue edits and uniform style controls apply only when that option is disabled.
 
-Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Original playback depends on the browser, container, and codecs; trying it does not create an extra video file. With automatic preview generation enabled, compatible MP4/WebM files play directly, while unsupported formats or playback failures get a fallback preview. With it disabled, even MKV files are tried directly and conversion requires clicking **Generate browser preview**. Original playback uses the video's default audio track; generated previews play the selected track. Browser preview generation can take time for long HEVC sources and creates a separate cached file for each selected audio track. Full-file proxy generation is intentionally serialized with exports. Disabling automatic generation stops automatic preview jobs and keeps already generated previews available; it does not delete files or stop manually requested previews.
+Image subtitle tracks such as PGS are detected and clearly labeled; OCR, editing, and image-subtitle burn-in are not implemented. Upload a text subtitle file to caption those videos. Original playback depends on the browser, container, and codecs; VideoEdit does not create conversion copies for playback. If the browser cannot play an MKV, HEVC, or other unsupported source, the timeline, captions, and watermark controls still work and the export is produced from the original file. Playback uses the video's default audio track; choose the export audio track in **Audio**.
 
-Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress and known-size requests; multipart files spool on the persistent data volume, and admission checks reserve space for the temporary copy. Probing, proxy generation, rendering, network downloads, and Telegram uploads run as background jobs. Preview original-audio changes regenerate the proxy. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
+Downloads restart from the beginning after failure; they do not resume partial byte ranges. Uploading a source file is synchronous, with browser progress and known-size requests; multipart files spool on the persistent data volume, and admission checks reserve space for the temporary copy. Probing, rendering, network downloads, and Telegram uploads run as background jobs. Music preview volume is limited by browser playback APIs; verify amplification above 1× through a rendered preview.
 
-Default storage capacity is 20 GB and a 1 GB free-space reserve. Rendering and previews also check available storage during processing. MP4/MKV/WebM sources and recognized image/audio file signatures are required. Signed URLs are encrypted in the job store and excluded from diagnostic responses. HTTP redirects and DNS answers are validated on every connection to prevent private-network requests; downloader requests never use environment proxies. FFmpeg is invoked with argument arrays and restricted local input protocols. Only trusted administrators should access an installation.
+Default storage capacity is 20 GB and a 1 GB free-space reserve. Renders also check available storage during processing. MP4/MKV/WebM sources and recognized image/audio file signatures are required. Signed URLs are encrypted in the job store and excluded from diagnostic responses. HTTP redirects and DNS answers are validated on every connection to prevent private-network requests; downloader requests never use environment proxies. FFmpeg is invoked with argument arrays and restricted local input protocols. Only trusted administrators should access an installation.
 
 See [SECURITY.md](SECURITY.md) for security reporting and deployment considerations. Licensed under [MIT](LICENSE).

@@ -44,7 +44,7 @@ def db():
 with db() as con:
     con.executescript("""
     CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT, source TEXT,
-        preview TEXT, thumbnail TEXT, metadata TEXT NOT NULL DEFAULT '{}', edit TEXT NOT NULL DEFAULT '{}',
+        thumbnail TEXT, metadata TEXT NOT NULL DEFAULT '{}', edit TEXT NOT NULL DEFAULT '{}',
         status TEXT, created REAL);
     CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, kind TEXT, project_id TEXT,
         payload TEXT, status TEXT, progress REAL DEFAULT 0, bytes INTEGER DEFAULT 0,
@@ -58,12 +58,23 @@ with db() as con:
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires REAL);
     """)
-    if "auto_preview" not in {
-        column["name"] for column in con.execute("PRAGMA table_info(projects)")
-    }:
-        con.execute(
-            "ALTER TABLE projects ADD COLUMN auto_preview INTEGER NOT NULL DEFAULT 1"
-        )
+    # Additive migrations for databases created before dual-language
+    # subtitles. SQLite cannot add a column conditionally, so probe first.
+    subtitle_columns = {
+        row["name"] for row in con.execute("PRAGMA table_info(subtitles)")
+    }
+    if "role" not in subtitle_columns:
+        con.execute("ALTER TABLE subtitles ADD COLUMN role TEXT DEFAULT ''")
+    if "origin" not in subtitle_columns:
+        con.execute("ALTER TABLE subtitles ADD COLUMN origin TEXT DEFAULT ''")
+    for row in con.execute(
+        "SELECT id,language FROM subtitles WHERE role IS NULL OR role=''"
+    ).fetchall():
+        language = (row["language"] or "").lower().split("-")[0]
+        if language in ("fa", "per", "fas", "persian"):
+            con.execute("UPDATE subtitles SET role='fa' WHERE id=?", (row["id"],))
+        elif language in ("en", "eng", "english"):
+            con.execute("UPDATE subtitles SET role='main' WHERE id=?", (row["id"],))
 
 
 def execute(sql, args=()):

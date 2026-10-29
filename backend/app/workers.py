@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import aiohttp
 from yarl import URL
 
-from . import media
+from . import autosubtitle, media
 from . import store as s
 from .network import connector, validate_url
 from .telegram import error_message, telegram
@@ -103,8 +103,6 @@ async def dispatch(job, payload):
         await download(project["id"], payload, ident)
     elif job["kind"] == "ingest":
         await media.ingest(project["id"], payload["path"], ident)
-    elif job["kind"] == "proxy":
-        await media.proxy(project, payload, ident)
     elif job["kind"] == "cover":
         clip = s.one(
             "SELECT * FROM clips WHERE id=? AND project_id=?",
@@ -114,6 +112,8 @@ async def dispatch(job, payload):
             raise ValueError("The rendered clip no longer exists.")
         await media.update_cover(clip, payload.get("time"), ident)
         s.update_job(ident, result_id=clip["id"])
+    elif job["kind"] == "autosubtitle":
+        await autosubtitle.run(project, payload, ident)
     else:
         await media.render(project, payload, ident)
 
@@ -154,20 +154,10 @@ async def worker(kinds):
                 finished=time.time(),
                 error="Cancelled by you.",
             )
-            if job["kind"] in ("download", "ingest", "proxy"):
-                project = s.one(
-                    "SELECT auto_preview FROM projects WHERE id=?", (job["project_id"],)
-                )
+            if job["kind"] in ("download", "ingest"):
                 s.execute(
-                    "UPDATE projects SET status=? WHERE id=?",
-                    (
-                        "ready"
-                        if job["kind"] == "proxy"
-                        and project
-                        and not project["auto_preview"]
-                        else "cancelled",
-                        job["project_id"],
-                    ),
+                    "UPDATE projects SET status='cancelled' WHERE id=?",
+                    (job["project_id"],),
                 )
         except asyncio.CancelledError:
             s.update_job(
@@ -182,6 +172,13 @@ async def worker(kinds):
                 message = error_message(exc)
             elif isinstance(exc, ValueError):
                 message = str(exc)
+            elif job["kind"] == "autosubtitle" and isinstance(
+                exc, (aiohttp.ClientError, asyncio.TimeoutError)
+            ):
+                message = (
+                    "The transcription or translation service could not be "
+                    "reached. Check the 9Router and ElevenLabs settings and retry."
+                )
             elif isinstance(exc, (aiohttp.ClientError, asyncio.TimeoutError)):
                 message = "The source connection failed or timed out. Check the link and retry."
             else:
@@ -189,7 +186,7 @@ async def worker(kinds):
             s.update_job(
                 ident, status="failed", error=message[:2000], finished=time.time()
             )
-            if job["kind"] in ("download", "ingest", "proxy"):
+            if job["kind"] in ("download", "ingest"):
                 s.execute(
                     "UPDATE projects SET status=? WHERE id=?",
                     ("failed", job["project_id"]),

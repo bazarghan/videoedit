@@ -7,9 +7,20 @@ import {
   Trash2,
   Check,
   KeyRound,
+  Sparkles,
+  Mic,
+  Languages,
 } from "lucide-react";
 import { api, json, size, Settings } from "./types";
 import ProjectDefaultsPanel from "./ProjectDefaults";
+import { Input } from "./components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 type Props = {
   onSettings: (s: Settings) => void;
   onError: (s: string) => void;
@@ -22,6 +33,11 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     [phone, setPhone] = useState(""),
     [destination, setDestination] = useState("me"),
     [limit, setLimit] = useState(20),
+    [aiBase, setAiBase] = useState("http://localhost:20128/v1"),
+    [aiModel, setAiModel] = useState("kr/claude-sonnet-4.5"),
+    [aiKey, setAiKey] = useState(""),
+    [elevenModel, setElevenModel] = useState("scribe_v1"),
+    [elevenKey, setElevenKey] = useState(""),
     [step, setStep] = useState("connect"),
     [code, setCode] = useState(""),
     [password, setPassword] = useState(""),
@@ -37,6 +53,9 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     setPhone(s.telegram.phone);
     setDestination(s.telegram.destination);
     setLimit(s.storage.limit_gb);
+    setAiBase(s.ai.base_url);
+    setAiModel(s.ai.model);
+    setElevenModel(s.elevenlabs.model);
     setStep(s.telegram_status.step || "connect");
     if (s.telegram_status.connected)
       setDestinations(await api("/telegram/destinations"));
@@ -83,6 +102,133 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           onError={onError}
           toast={toast}
         />
+        <section className="panel">
+          <div className="panel-heading">
+            <div className="panel-icon">
+              <Sparkles size={22} />
+            </div>
+            <div>
+              <h2>Auto subtitles</h2>
+              <p>ElevenLabs transcribes; 9Router translates to Persian.</p>
+            </div>
+            <span
+              className={
+                "badge " +
+                (settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
+                  ? "success"
+                  : "")
+              }
+            >
+              {settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
+                ? "Ready"
+                : "Needs tokens"}
+            </span>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              run(async () => {
+                await api(
+                  "/settings/elevenlabs",
+                  json("PUT", {
+                    api_key: elevenKey,
+                    model: elevenModel,
+                  }),
+                );
+                await api(
+                  "/settings/ai",
+                  json("PUT", {
+                    api_key: aiKey,
+                    base_url: aiBase,
+                    model: aiModel,
+                  }),
+                );
+                setAiKey("");
+                setElevenKey("");
+                await load();
+                toast("Auto subtitle settings saved.");
+              });
+            }}
+          >
+            <div className="section-heading">
+              <h3>
+                <Mic size={14} /> ElevenLabs transcription
+              </h3>
+              <span>English source</span>
+            </div>
+            <label>
+              ElevenLabs API token
+              <Input
+                type="password"
+                autoComplete="new-password"
+                value={elevenKey}
+                onChange={(e) => setElevenKey(e.target.value)}
+                placeholder={
+                  settings.elevenlabs.api_key_saved
+                    ? "Saved securely — leave blank to keep"
+                    : "xi-api-key from elevenlabs.io"
+                }
+              />
+            </label>
+            <label>
+              Transcription model
+              <Input
+                value={elevenModel}
+                onChange={(e) => setElevenModel(e.target.value)}
+                placeholder="scribe_v1"
+              />
+            </label>
+            <div className="control-divider" />
+            <div className="section-heading">
+              <h3>
+                <Languages size={14} /> 9Router translation
+              </h3>
+              <span>Persian output</span>
+            </div>
+            <label>
+              9Router base URL
+              <Input
+                value={aiBase}
+                onChange={(e) => setAiBase(e.target.value)}
+                placeholder="http://localhost:20128/v1"
+                required
+              />
+            </label>
+            <label>
+              9Router API token
+              <Input
+                type="password"
+                autoComplete="new-password"
+                value={aiKey}
+                onChange={(e) => setAiKey(e.target.value)}
+                placeholder={
+                  settings.ai.api_key_saved
+                    ? "Saved securely — leave blank to keep"
+                    : "Copy the key from the 9Router dashboard"
+                }
+              />
+            </label>
+            <label>
+              Translation model
+              <Input
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                placeholder="kr/claude-sonnet-4.5"
+                required
+              />
+            </label>
+            <p className="hint">
+              Both tokens are encrypted at rest and never returned to the
+              browser. The 9Router endpoint must be OpenAI-compatible
+              (<code>/chat/completions</code>). Run 9Router locally or point
+              this at your own gateway.
+            </p>
+            <button className="secondary" disabled={busy}>
+              {busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{" "}
+              Save auto subtitle settings
+            </button>
+          </form>
+        </section>
         <section className="panel">
           <div className="panel-heading">
             <div className="panel-icon">
@@ -144,7 +290,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             <div className="form-row">
               <label>
                 API ID
-                <input
+                <Input
                   inputMode="numeric"
                   type="number"
                   value={apiId}
@@ -155,7 +301,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
               </label>
               <label>
                 API hash
-                <input
+                <Input
                   type="password"
                   autoComplete="new-password"
                   value={hash}
@@ -171,7 +317,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             </div>
             <label>
               Phone number
-              <input
+              <Input
                 type="tel"
                 placeholder="+1 555 123 4567"
                 value={phone}
@@ -194,16 +340,24 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             {connected && (
               <label>
                 Default destination
-                <select
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
+                <Select
+                  value={destination || "me"}
+                  onValueChange={(value) => setDestination(value)}
                 >
-                  {destinations.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    className="h-9 text-xs"
+                    aria-label="Default destination"
+                  >
+                    <SelectValue placeholder="Choose a destination" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {destinations.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             )}
             <button className="secondary" disabled={busy}>
@@ -259,7 +413,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     {step === "password"
                       ? "Two-step verification password"
                       : "Telegram login code"}
-                    <input
+                    <Input
                       type={step === "password" ? "password" : "text"}
                       autoComplete="off"
                       value={step === "password" ? password : code}
@@ -345,7 +499,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           >
             <label>
               Workspace limit (GB)
-              <input
+              <Input
                 type="number"
                 min={2}
                 max={10000}
@@ -360,7 +514,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           <div className="cleanup-list">
             {Object.entries(settings.storage.categories)
               .filter(([name]) =>
-                ["sources", "previews", "renders", "assets"].includes(name),
+                ["sources", "thumbnails", "renders", "assets"].includes(name),
               )
               .map(([name, bytes]) => (
                 <div key={name}>
@@ -369,7 +523,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       {
                         {
                           sources: "Original videos",
-                          previews: "Browser previews",
+                          thumbnails: "Project thumbnails",
                           renders: "Rendered clips",
                           assets: "Music & watermarks",
                         }[name]
@@ -389,7 +543,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                               ? "Remove ALL original videos? Existing exports remain, but these projects cannot be rendered again."
                               : name === "renders"
                                 ? "Delete ALL rendered clips and rendered previews?"
-                                : "Remove all browser previews? You can regenerate them in the editor.",
+                                : "Remove all project thumbnails? Projects keep their videos and renders.",
                           )
                         )
                           run(async () => {
@@ -410,7 +564,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
           </div>
           <p className="hint">
             Cleanup is available when all active jobs finish. Delete a project
-            to remove its originals, assets, subtitles, previews and exports
+            to remove its originals, assets, subtitles, thumbnails and exports
             together.
           </p>
         </section>

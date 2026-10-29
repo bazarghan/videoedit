@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
   Pause,
@@ -11,20 +11,26 @@ import {
   Music,
   Stamp,
   Download,
-  ChevronDown,
   LoaderCircle,
-  Check,
+  Check as CheckIcon,
   Move,
   Upload,
   Plus,
   Trash2,
   ArrowUpRight,
   Save,
+  ZoomIn,
+  ZoomOut,
+  Scan,
+  Sparkles,
+  Languages,
+  Pencil,
 } from "lucide-react";
 import {
   api,
   json,
   clock,
+  timecode,
   Project,
   Job,
   Clip,
@@ -32,6 +38,50 @@ import {
   Cue,
   fonts,
 } from "./types";
+import WatermarkTemplateEditor from "./WatermarkTemplate";
+import { templateFromLegacy, watermarkVisibleAt } from "./watermark";
+import { Button } from "./components/ui/button";
+import { Checkbox } from "./components/ui/checkbox";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import { Slider as RangeSlider } from "./components/ui/slider";
+import { Textarea } from "./components/ui/textarea";
+import {
+  Select as SelectRoot,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
+const MIN_CLIP = 0.001;
+const MAX_ZOOM = 1000;
+const TICK_STEPS = [
+  0.001, 0.002, 0.0025, 0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1,
+  2, 2.5, 5, 10, 15, 25, 30, 45, 60, 90, 120, 180, 300, 600, 900, 1800, 3600,
+];
+
+function snapMs(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function tickStepForSpan(span: number) {
+  const raw = Math.max(0.001, span / 8);
+  return TICK_STEPS.find((step) => step >= raw) ?? 3600;
+}
+
+function tickLabel(value: number, step: number) {
+  const decimals =
+    step >= 1 ? 0 : Math.min(3, Math.max(0, Math.ceil(-Math.log10(step))));
+  const total = Math.max(0, value);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const seconds = (total % 60)
+    .toFixed(decimals)
+    .padStart(decimals ? decimals + 3 : 2, "0");
+  const label = `${String(minutes).padStart(2, "0")}:${seconds}`;
+  return hours ? `${hours}:${label}` : label;
+}
+
 type Props = {
   id: string;
   jobs: Job[];
@@ -52,7 +102,13 @@ export default function Editor({
 }: Props) {
   const [project, setProject] = useState<Project | null>(null),
     [edit, setEdit] = useState<Edit | null>(null),
-    [cues, setCues] = useState<Cue[]>([]),
+    [cuesByTrack, setCuesByTrack] = useState<Record<string, Cue[]>>({}),
+    [cueRole, setCueRole] = useState<"main" | "fa">("main"),
+    [editingCue, setEditingCue] = useState<{
+      trackId: string;
+      index: number;
+    } | null>(null),
+    [cueDraft, setCueDraft] = useState(""),
     [tab, setTab] = useState("clip"),
     [time, setTime] = useState(0),
     [playing, setPlaying] = useState(false),
@@ -66,86 +122,86 @@ export default function Editor({
     [frameWidth, setFrameWidth] = useState(800),
     [cropDrag, setCropDrag] = useState(false),
     [busy, setBusy] = useState(false),
-    [forcePreview, setForcePreview] = useState(false),
-    [previewBusy, setPreviewBusy] = useState(false),
-    [originalFailed, setOriginalFailed] = useState(false),
+    [playbackFailed, setPlaybackFailed] = useState(false),
     [stageHeight, setStageHeight] = useState(450),
     [wmBox, setWmBox] = useState({ width: 100, height: 30 }),
-    [cuePage, setCuePage] = useState(0);
+    [cuePage, setCuePage] = useState(0),
+    [zoom, setZoom] = useState(1),
+    [timelineWidth, setTimelineWidth] = useState(0),
+    [scrollLeft, setScrollLeft] = useState(0),
+    [refine, setRefine] = useState<{ start: number; end: number } | null>(null);
   const video = useRef<HTMLVideoElement>(null),
     music = useRef<HTMLAudioElement>(null),
     frame = useRef<HTMLDivElement>(null),
     watermark = useRef<HTMLDivElement>(null),
     stage = useRef<HTMLDivElement>(null),
     timeline = useRef<HTMLDivElement>(null),
-    lastProxy = useRef("");
+    timelineScroll = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef(1);
+  const zoomAnchor = useRef<{ time: number; x: number } | null>(null);
+  const autoSubtitleRef = useRef("");
+  const cancelCueEditRef = useRef(false);
   const duration = project?.metadata.duration || 0;
+  const rangeStart = refine ? refine.start : 0;
+  const rangeEnd = refine ? refine.end : duration;
+  const rangeSpan = Math.max(MIN_CLIP, rangeEnd - rangeStart);
+  const tickStep = tickStepForSpan(rangeSpan / zoom);
+  const timelineTicks = useMemo(() => {
+    if (!duration) return [] as number[];
+    const visible = rangeSpan / zoom;
+    const contentWidth = timelineWidth * zoom;
+    const startTime =
+      contentWidth > 0
+        ? Math.min(
+            rangeEnd,
+            rangeStart + (scrollLeft / contentWidth) * rangeSpan,
+          )
+        : rangeStart;
+    const endTime = Math.min(rangeEnd, startTime + visible);
+    const first = Math.max(
+      rangeStart,
+      rangeStart + Math.floor((startTime - rangeStart) / tickStep) * tickStep,
+    );
+    const last = Math.min(rangeEnd, endTime + tickStep * 0.5);
+    const ticks: number[] = [];
+    for (
+      let tick = first;
+      tick <= last + 1e-9 && ticks.length < 40;
+      tick += tickStep
+    ) {
+      ticks.push(tick);
+    }
+    return ticks;
+  }, [
+    duration,
+    zoom,
+    tickStep,
+    scrollLeft,
+    timelineWidth,
+    rangeStart,
+    rangeEnd,
+    rangeSpan,
+  ]);
   const active = jobs.filter(
     (j) => j.project_id === id && ["queued", "running"].includes(j.status),
   );
+  const autoSubtitleJob = jobs.find(
+    (j) =>
+      j.project_id === id &&
+      j.kind === "autosubtitle" &&
+      ["queued", "running"].includes(j.status),
+  );
   const complete = !!project?.metadata.duration;
-  const sourceType = project?.source_playback_type;
-  const useOriginal = !!(
-    project?.has_source &&
-    !forcePreview &&
-    (!project.auto_preview ||
-      (sourceType &&
-        edit?.audio.track === 0 &&
-        document.createElement("video").canPlayType(sourceType)))
-  );
-  const cachedPlayback = !!(
-    project?.has_preview && project.preview_audio_track === edit?.audio.track
-  );
-  const playbackReady = useOriginal || cachedPlayback;
-  const previewRunning = active.some((j) => j.kind === "proxy");
-  async function generatePreview() {
-    if (!edit) return;
-    setPreviewBusy(true);
-    try {
-      const result = await api<{ job_id: string | null }>(
-        `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true`,
-        json("POST"),
-      );
-      setForcePreview(true);
-      setOriginalFailed(false);
-      const updated = await api<Project>(`/projects/${id}`);
-      setProject((old) => (old?.id === id ? { ...old, ...updated } : old));
-      toast(
-        result.job_id ? "Browser preview queued." : "Browser preview ready.",
-      );
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
-  async function changeAutoPreview(enabled: boolean) {
-    setPreviewBusy(true);
-    try {
-      const updated = await api<Project>(
-        `/projects/${id}/preview-settings`,
-        json("PATCH", { auto_preview: enabled }),
-      );
-      setProject((old) => (old?.id === id ? { ...old, ...updated } : old));
-      setForcePreview(false);
-      setOriginalFailed(false);
-      lastProxy.current = "";
-      toast(
-        enabled
-          ? "Automatic previews enabled."
-          : "Automatic previews disabled.",
-      );
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
+  const playbackReady = !!project?.has_source && complete;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
     if (!edit) return;
     setSavingDefaults(true);
     try {
-      const { track_id: _track, ...subtitles } = edit.subtitles;
+      const {
+        track_id: _track,
+        fa_track_id: _faTrack,
+        ...subtitles
+      } = edit.subtitles;
       await api(
         "/settings/project-defaults",
         json("PATCH", {
@@ -164,22 +220,26 @@ export default function Editor({
   useEffect(() => {
     setProject(null);
     setEdit(null);
-    lastProxy.current = "";
-    setForcePreview(false);
-    setOriginalFailed(false);
-    setCues([]);
+    setPlaybackFailed(false);
+    setCuesByTrack({});
+    setCueRole("main");
+    setEditingCue(null);
     setSaved(false);
     setTime(0);
     setCuePage(0);
+    setRefine(null);
     api<Project>(`/projects/${id}`)
       .then((p) => {
         setProject(p);
-        if (p.metadata.duration) setEdit(p.edit);
+        if (p.metadata.duration) {
+          setEdit(p.edit);
+          setTime(p.edit.start);
+        }
       })
       .catch((e) => onError(e.message));
   }, [id]);
   useEffect(() => {
-    if (!project || (playbackReady && complete && active.length === 0)) return;
+    if (!project || (playbackReady && active.length === 0)) return;
     const t = setInterval(
       () =>
         api<Project>(`/projects/${id}`)
@@ -191,32 +251,7 @@ export default function Editor({
       2000,
     );
     return () => clearInterval(t);
-  }, [id, playbackReady, complete, active.length]);
-  useEffect(() => {
-    if (
-      !complete ||
-      !edit ||
-      !project?.has_source ||
-      !project.auto_preview ||
-      playbackReady
-    )
-      return;
-    const key = `${id}:${edit.audio.track}:${forcePreview}`;
-    if (lastProxy.current === key) return;
-    lastProxy.current = key;
-    api(
-      `/projects/${id}/preview?audio_track=${edit.audio.track}&force=true&automatic=true`,
-      json("POST"),
-    ).catch((e) => onError(e.message));
-  }, [
-    id,
-    complete,
-    edit?.audio.track,
-    project?.has_source,
-    project?.auto_preview,
-    playbackReady,
-    forcePreview,
-  ]);
+  }, [id, playbackReady, active.length]);
   useEffect(() => {
     if (!edit || !complete) return;
     setSaved(false);
@@ -235,13 +270,75 @@ export default function Editor({
     return () => clearTimeout(t);
   }, [edit, id, complete]);
   useEffect(() => {
-    setCues([]);
     setCuePage(0);
-    if (edit?.subtitles.track_id)
-      api(`/projects/${id}/subtitles/${edit.subtitles.track_id}`)
-        .then((r) => setCues(r.cues))
+    setEditingCue(null);
+    const ids = [edit?.subtitles.track_id, edit?.subtitles.fa_track_id].filter(
+      Boolean,
+    ) as string[];
+    if (!ids.length) {
+      setCuesByTrack({});
+      return;
+    }
+    let alive = true;
+    Promise.all(
+      ids.map((trackId) =>
+        api(`/projects/${id}/subtitles/${trackId}`)
+          .then((r) => [trackId, r.cues] as const)
+          .catch((e) => {
+            onError(e.message);
+            return [trackId, []] as const;
+          }),
+      ),
+    ).then((entries) => {
+      if (alive) setCuesByTrack(Object.fromEntries(entries));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [edit?.subtitles.track_id, edit?.subtitles.fa_track_id]);
+  useEffect(() => {
+    const job = jobs.find(
+      (item) => item.project_id === id && item.kind === "autosubtitle",
+    );
+    const key = job ? `${job.id}:${job.status}` : "";
+    if (!key || key === autoSubtitleRef.current) return;
+    autoSubtitleRef.current = key;
+    if (job!.status === "completed") {
+      api<Project>(`/projects/${id}`)
+        .then((next) => {
+          setProject(next);
+          setEdit((old) =>
+            old
+              ? {
+                  ...old,
+                  subtitles: {
+                    ...old.subtitles,
+                    track_id: next.edit.subtitles.track_id,
+                    fa_track_id: next.edit.subtitles.fa_track_id,
+                    burn: true,
+                    soft: false,
+                  },
+                }
+              : next.edit,
+          );
+          toast("Automatic English and Persian subtitles are ready.");
+        })
         .catch((e) => onError(e.message));
-  }, [edit?.subtitles.track_id]);
+    } else if (job!.status === "failed" && job!.error) {
+      onError(job!.error);
+    }
+  }, [jobs, id]);
+  useEffect(() => {
+    if (!edit) return;
+    if (!edit.subtitles.track_id && edit.subtitles.fa_track_id)
+      setCueRole("fa");
+    else if (cueRole === "fa" && !edit.subtitles.fa_track_id)
+      setCueRole("main");
+  }, [
+    cueRole,
+    edit?.subtitles.track_id,
+    edit?.subtitles.fa_track_id,
+  ]);
   useEffect(() => {
     if (!frame.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -259,6 +356,24 @@ export default function Editor({
       video.current.playbackRate = speed;
     }
   }, [volume, edit?.audio.volume, edit?.audio.mute, speed]);
+  useEffect(() => {
+    applySoftSubtitles();
+  }, [edit?.subtitles.soft, playbackReady]);
+  function applySoftSubtitles() {
+    const player = video.current;
+    if (!player) return;
+    let shown = false;
+    for (let index = 0; index < player.textTracks.length; index++) {
+      const track = player.textTracks[index];
+      const usable = track.kind === "subtitles" || track.kind === "captions";
+      if (edit?.subtitles.soft && usable && !shown) {
+        track.mode = "showing";
+        shown = true;
+      } else {
+        track.mode = "disabled";
+      }
+    }
+  }
   function syncMusic(current: number, isPlaying: boolean) {
     if (!music.current || !edit) return;
     const relative = current - edit.start;
@@ -334,44 +449,172 @@ export default function Editor({
     setEdit((old) => (old ? { ...old, [key]: value } : null));
   }
   function seek(value: number) {
-    if (video.current) {
-      video.current.currentTime = Math.max(0, Math.min(duration, value));
-      setTime(video.current.currentTime);
-    }
+    const target = snapMs(Math.max(0, Math.min(duration, value)));
+    if (video.current) video.current.currentTime = target;
+    setTime(target);
   }
+  function timeAtFraction(fraction: number) {
+    const ratio = Math.max(0, Math.min(1, fraction));
+    return snapMs(rangeStart + ratio * rangeSpan);
+  }
+  function percentAtTime(value: number) {
+    return ((value - rangeStart) / rangeSpan) * 100;
+  }
+  function resetTimelineView() {
+    zoomRef.current = 1;
+    zoomAnchor.current = null;
+    setZoom(1);
+    setScrollLeft(0);
+    if (timelineScroll.current) timelineScroll.current.scrollLeft = 0;
+  }
+  function startRefine() {
+    if (!edit || edit.end <= edit.start) return;
+    setRefine({ start: edit.start, end: edit.end });
+    resetTimelineView();
+    seek(edit.start);
+  }
+  function endRefine() {
+    setRefine(null);
+    resetTimelineView();
+    if (edit && (time < edit.start || time >= edit.end)) seek(edit.start);
+  }
+  function zoomTo(next: number, anchorX?: number) {
+    const scroller = timelineScroll.current;
+    const clamped = Math.min(MAX_ZOOM, Math.max(1, next));
+    if (!scroller || !duration || clamped === zoomRef.current) {
+      zoomRef.current = clamped;
+      setZoom(clamped);
+      return;
+    }
+    const x = anchorX ?? scroller.clientWidth / 2;
+    const contentWidth = scroller.scrollWidth || 1;
+    zoomAnchor.current = {
+      time: rangeStart + ((scroller.scrollLeft + x) / contentWidth) * rangeSpan,
+      x,
+    };
+    zoomRef.current = clamped;
+    setZoom(clamped);
+  }
+  function nudgeZoom(factor: number) {
+    zoomTo(zoomRef.current * factor);
+  }
+  useEffect(() => {
+    const scroller = timelineScroll.current;
+    if (!scroller || !duration) return;
+    const observer = new ResizeObserver((entries) => {
+      setTimelineWidth(entries[0].contentRect.width);
+    });
+    observer.observe(scroller);
+    setTimelineWidth(scroller.clientWidth);
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        setScrollLeft(scroller.scrollLeft);
+      });
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [duration]);
+  useEffect(() => {
+    const scroller = timelineScroll.current;
+    if (!scroller || !duration) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY))
+        return;
+      event.preventDefault();
+      const rect = scroller.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+      const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+      const factor = Math.exp(-delta * 0.003);
+      zoomTo(zoomRef.current * factor, cursorX);
+    };
+    scroller.addEventListener("wheel", onWheel, { passive: false });
+    return () => scroller.removeEventListener("wheel", onWheel);
+  }, [duration, rangeStart, rangeSpan]);
+  useLayoutEffect(() => {
+    const scroller = timelineScroll.current;
+    zoomRef.current = zoom;
+    if (!scroller || !duration) return;
+    const anchor = zoomAnchor.current;
+    if (anchor) {
+      const contentWidth = scroller.scrollWidth;
+      scroller.scrollLeft = Math.max(
+        0,
+        ((anchor.time - rangeStart) / rangeSpan) * contentWidth - anchor.x,
+      );
+      zoomAnchor.current = null;
+    } else if (zoom === 1) {
+      scroller.scrollLeft = 0;
+    }
+    setScrollLeft(scroller.scrollLeft);
+  }, [zoom, duration, rangeStart, rangeSpan]);
+  useEffect(() => {
+    const scroller = timelineScroll.current;
+    const content = timeline.current;
+    if (!scroller || !content || !duration) return;
+    if (time < rangeStart || time > rangeEnd) return;
+    const x = ((time - rangeStart) / rangeSpan) * content.clientWidth;
+    const left = scroller.scrollLeft;
+    const right = left + scroller.clientWidth;
+    if (x < left || x > right - 2) {
+      scroller.scrollLeft = Math.max(0, x - scroller.clientWidth / 2);
+    }
+  }, [time, duration, rangeStart, rangeEnd, rangeSpan]);
   async function toggle() {
     if (!video.current) return;
     if (playing) video.current.pause();
     else {
-      if (loop && edit && (time < edit.start || time >= edit.end))
-        seek(edit.start);
+      if (edit && (time < edit.start || time >= edit.end)) seek(edit.start);
       await video.current
         .play()
         .catch(() =>
           onError(
-            "The browser preview is still being prepared. Try again shortly.",
+            "This video cannot play in this browser. You can still render it.",
           ),
         );
     }
   }
-  async function upload(kind: string, file: File) {
+  async function upload(kind: string, file: File, role?: "main" | "fa") {
     setBusy(true);
     try {
       const form = new FormData();
       form.append("file", file);
+      if (kind === "subtitles" && role) form.append("role", role);
       const result = await api(
         `/projects/${id}/${kind === "subtitles" ? "subtitles" : "assets/" + kind}`,
         { method: "POST", body: form },
       );
       setProject(await api(`/projects/${id}`));
       if (kind === "subtitles")
-        update("subtitles", "track_id", result.track_id);
+        update("subtitles", role === "fa" ? "fa_track_id" : "track_id", result.track_id);
       if (kind === "watermark") {
         update("watermark", "asset_id", result.asset_id);
         update("watermark", "kind", "image");
       }
       if (kind === "music") update("audio", "music_id", result.asset_id);
       toast("File added to your project.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function autoSubtitles() {
+    setBusy(true);
+    try {
+      await api(
+        `/projects/${id}/autosubtitle`,
+        json("POST", { language: "en", translate: true }),
+      );
+      toast(
+        "Automatic subtitles queued. ElevenLabs will transcribe, then 9Router will translate to Persian.",
+      );
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -397,6 +640,34 @@ export default function Editor({
       setBusy(false);
     }
   }
+  function dragPlayhead(e: React.PointerEvent<HTMLElement>) {
+    if (!timeline.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const element = e.currentTarget;
+    element.focus();
+    element.setPointerCapture(e.pointerId);
+    if (video.current && !video.current.paused) video.current.pause();
+    const move = (ev: PointerEvent) => {
+      if (!timeline.current) return;
+      const rect = timeline.current.getBoundingClientRect();
+      seek(timeAtFraction((ev.clientX - rect.left) / rect.width));
+    };
+    const end = () => {
+      element.removeEventListener("pointermove", move);
+      element.removeEventListener("pointerup", end);
+      element.removeEventListener("pointercancel", end);
+    };
+    element.addEventListener("pointermove", move);
+    element.addEventListener("pointerup", end);
+    element.addEventListener("pointercancel", end);
+  }
+  function nudgePlayhead(e: React.KeyboardEvent<HTMLElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 1 : e.altKey ? 0.001 : 0.01;
+    seek(time + (e.key === "ArrowRight" ? step : -step));
+  }
   function dragHandle(e: React.PointerEvent, kind: "start" | "end") {
     e.preventDefault();
     const element = e.currentTarget as HTMLElement;
@@ -404,18 +675,15 @@ export default function Editor({
     const move = (ev: PointerEvent) => {
       if (!timeline.current || !edit) return;
       const rect = timeline.current.getBoundingClientRect();
-      const t = Math.max(
-        0,
-        Math.min(duration, ((ev.clientX - rect.left) / rect.width) * duration),
-      );
+      const t = timeAtFraction((ev.clientX - rect.left) / rect.width);
       setEdit((old) =>
         old
           ? {
               ...old,
               [kind]:
                 kind === "start"
-                  ? Math.min(t, old.end - 0.05)
-                  : Math.max(t, old.start + 0.05),
+                  ? Math.min(t, old.end - MIN_CLIP)
+                  : Math.max(t, old.start + MIN_CLIP),
             }
           : null,
       );
@@ -456,6 +724,21 @@ export default function Editor({
         y =
           initial.y -
           (ev.clientY - initialY) / Math.max(overflowY, rect.height * 0.25);
+      } else if (edit.watermark.template) {
+        x =
+          initial.x +
+          (ev.clientX - initialX) /
+            Math.max(
+              1,
+              rect.width - (2 * edit.watermark.margin * height) / 1080,
+            );
+        y =
+          initial.y +
+          (ev.clientY - initialY) /
+            Math.max(
+              1,
+              rect.height - (2 * edit.watermark.margin * height) / 1080,
+            );
       } else {
         x =
           initial.x +
@@ -537,8 +820,12 @@ export default function Editor({
           {active.map((j) => (
             <div className="processing-job" key={j.id}>
               <span>
-                {j.kind === "download" ? "Downloading" : "Inspecting video"} ·{" "}
-                {j.progress.toFixed(0)}%
+                {j.kind === "download"
+                  ? "Downloading"
+                  : j.kind === "autosubtitle"
+                    ? "Creating English + Persian subtitles"
+                    : "Inspecting video"}{" "}
+                · {j.progress.toFixed(0)}%
               </span>
               <div className="meter">
                 <i style={{ width: `${j.progress}%` }} />
@@ -556,28 +843,165 @@ export default function Editor({
       ? project.metadata.width / project.metadata.height
       : Number(edit.crop.ratio.split(":")[0]) /
         Number(edit.crop.ratio.split(":")[1]);
-  const visibleCues = cues.filter(
-    (c) =>
-      time >= c.start + edit.subtitles.offset &&
-      time < c.end + edit.subtitles.offset,
-  );
   const style = edit.subtitles,
     wm = edit.watermark;
+  const listTrackId =
+    cueRole === "fa" ? style.fa_track_id : style.track_id;
+  const cues = listTrackId ? cuesByTrack[listTrackId] || [] : [];
+  const mainTrackCues = style.track_id ? cuesByTrack[style.track_id] || [] : [];
+  const faTrackCues = style.fa_track_id
+    ? cuesByTrack[style.fa_track_id] || []
+    : [];
+  const visibleAt = (cue: Cue) =>
+    time >= cue.start + style.offset && time < cue.end + style.offset;
+  const mainVisible = mainTrackCues
+    .map((cue, index) => ({ cue, index }))
+    .filter(({ cue }) => visibleAt(cue));
+  const faVisible = faTrackCues
+    .map((cue, index) => ({ cue, index }))
+    .filter(({ cue }) => visibleAt(cue));
+  function setCues(updater: Cue[] | ((current: Cue[]) => Cue[])) {
+    if (!listTrackId) return;
+    setCuesByTrack((old) => {
+      const current = old[listTrackId] || [];
+      return {
+        ...old,
+        [listTrackId]:
+          typeof updater === "function" ? updater(current) : updater,
+      };
+    });
+  }
+  async function saveTrackCues(trackId: string, next: Cue[], message: string) {
+    try {
+      await api(`/projects/${id}/subtitles/${trackId}`, json("PUT", next));
+      setCuesByTrack((old) => ({ ...old, [trackId]: next }));
+      toast(message);
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
+  function beginCueEdit(trackId: string, index: number, cue: Cue) {
+    if (playing) return;
+    setEditingCue({ trackId, index });
+    setCueDraft(cue.text);
+  }
+  async function commitCueEdit() {
+    if (cancelCueEditRef.current) {
+      cancelCueEditRef.current = false;
+      setEditingCue(null);
+      return;
+    }
+    if (!editingCue) return;
+    const { trackId, index } = editingCue;
+    const current = cuesByTrack[trackId] || [];
+    const next = current.map((cue, cueIndex) =>
+      cueIndex === index ? { ...cue, text: cueDraft.trim() } : cue,
+    );
+    setEditingCue(null);
+    await saveTrackCues(trackId, next, "Caption text saved.");
+  }
+  const captionLine = (fa: boolean) => {
+    const scale = height / 1080;
+    return {
+      fontFamily: fa ? style.fa_font : style.font,
+      fontSize: (fa ? style.fa_size : style.size) * scale,
+      fontWeight: (fa ? style.fa_bold : style.bold) ? 700 : 400,
+      color: fa ? style.fa_color : style.color,
+      WebkitTextStroke: `${(fa ? style.fa_outline : style.outline) * scale}px ${
+        fa ? style.fa_outline_color : style.outline_color
+      }`,
+      textShadow: (fa ? style.fa_shadow : style.shadow)
+        ? `${(fa ? style.fa_shadow : style.shadow) * scale}px ${
+            (fa ? style.fa_shadow : style.shadow) * scale
+          }px ${(fa ? style.fa_shadow : style.shadow) * scale}px #0009`
+        : "none",
+      direction: fa ? ("rtl" as const) : ("ltr" as const),
+      unicodeBidi: fa ? ("plaintext" as const) : ("normal" as const),
+      alignSelf:
+        style.align === "left"
+          ? ("flex-start" as const)
+          : style.align === "right"
+            ? ("flex-end" as const)
+            : ("center" as const),
+      background: style.box
+        ? `rgba(0,0,0,${style.box_opacity})`
+        : undefined,
+      padding: style.box ? "2px 5px" : undefined,
+    };
+  };
+  function renderCaptionLine(
+    trackId: string,
+    index: number,
+    cue: Cue,
+    fa: boolean,
+  ) {
+    const isEditing =
+      editingCue?.trackId === trackId && editingCue.index === index;
+    if (isEditing)
+      return (
+        <Textarea
+          key={`${trackId}-${index}`}
+          autoFocus
+          className="caption-inline-input"
+          aria-label="Edit caption text on the video"
+          value={cueDraft}
+          style={captionLine(fa)}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setCueDraft(event.target.value)}
+          onBlur={() => commitCueEdit()}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancelCueEditRef.current = true;
+              event.currentTarget.blur();
+              setEditingCue(null);
+            } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              commitCueEdit();
+            }
+          }}
+        />
+      );
+    return (
+      <span
+        key={`${trackId}-${index}`}
+        className="caption-line"
+        style={{
+          ...captionLine(fa),
+          pointerEvents: playing ? "none" : "auto",
+          cursor: playing ? "inherit" : "text",
+        }}
+        title={playing ? undefined : "Pause and click to edit this caption"}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          beginCueEdit(trackId, index, cue);
+        }}
+      >
+        {cue.text}
+      </span>
+    );
+  }
   const wmWidth = wmBox.width,
     wmHeight = wmBox.height;
   const m = (wm.margin * height) / 1080;
+  const wmTemplate = wm.kind === "text" ? wm.template : null;
   const watermarkVisible =
-    wm.kind !== "none" &&
     time <= edit.end &&
-    time - edit.start >= wm.start &&
-    (wm.end === null || time - edit.start <= wm.end);
+    watermarkVisibleAt(
+      wm,
+      wmTemplate,
+      time - edit.start,
+      edit.end - edit.start,
+    );
   const rendered = clips.filter((c) => c.project_id === id).slice(0, 4);
   return (
     <div className="editor">
       <div className="editor-heading">
         <div>
           <span className="eyebrow">VIDEO EDITOR</span>
-          <input
+          <Input
             className="project-name-input"
             aria-label="Project name"
             value={project.name}
@@ -596,7 +1020,7 @@ export default function Editor({
               </>
             ) : saved ? (
               <>
-                <Check size={12} /> Changes saved
+                <CheckIcon size={12} /> Changes saved
               </>
             ) : (
               "Editing"
@@ -604,6 +1028,21 @@ export default function Editor({
           </span>
         </div>
         <div className="form-actions">
+          <button
+            className="secondary"
+            disabled={busy || !project.has_source || !!autoSubtitleJob}
+            onClick={() => autoSubtitles()}
+            title="Transcribe with ElevenLabs, translate with 9Router, and add English + Persian subtitles"
+          >
+            {autoSubtitleJob ? (
+              <LoaderCircle className="spin" size={15} />
+            ) : (
+              <Sparkles size={15} />
+            )}{" "}
+            {autoSubtitleJob
+              ? `Auto subtitle ${autoSubtitleJob.progress.toFixed(0)}%`
+              : "Auto subtitle"}
+          </button>
           <button
             className="secondary"
             disabled={busy || !project.has_source}
@@ -636,8 +1075,8 @@ export default function Editor({
               {playbackReady ? (
                 <video
                   ref={video}
-                  key={`${project.id}:${edit.audio.track}:${useOriginal}`}
-                  src={`/api/media/project/${id}/preview?audio_track=${edit.audio.track}&original=${useOriginal}&force_preview=${!useOriginal}&v=${jobs.filter((j) => j.kind === "proxy" && j.project_id === id && j.status === "completed").length}`}
+                  key={project.id}
+                  src={`/api/media/project/${id}/source`}
                   style={{
                     objectFit: edit.crop.mode === "fit" ? "contain" : "cover",
                     objectPosition: `${edit.crop.x * 100}% ${edit.crop.y * 100}%`,
@@ -649,31 +1088,28 @@ export default function Editor({
                     player.muted = edit.audio.mute;
                     player.playbackRate = speed;
                     player.currentTime = Math.min(time, player.duration);
-                    for (let i = 0; i < player.textTracks.length; i++) {
-                      player.textTracks[i].mode = "disabled";
-                    }
+                    applySoftSubtitles();
                   }}
-                  onError={(e) => {
-                    const code = e.currentTarget.error?.code;
-                    if (useOriginal && (code === 3 || code === 4)) {
-                      setPlaying(false);
-                      setForcePreview(true);
-                      setOriginalFailed(true);
-                      if (project.auto_preview) {
-                        toast(
-                          "Preparing a compatible preview for this browser.",
-                        );
-                      }
-                    } else {
-                      onError(
-                        "Video playback failed. Reload the project to try again.",
-                      );
-                    }
+                  onError={() => {
+                    setPlaying(false);
+                    setPlaybackFailed(true);
+                    onError(
+                      "This browser cannot play this video format. You can still trim and render it.",
+                    );
                   }}
                   onTimeUpdate={(e) => {
-                    const t = e.currentTarget.currentTime;
-                    if (loop && (t >= edit.end || t < edit.start)) {
-                      seek(edit.start);
+                    const player = e.currentTarget;
+                    const t = player.currentTime;
+                    if (edit && t >= edit.end) {
+                      if (loop) seek(edit.start);
+                      else {
+                        player.pause();
+                        player.currentTime = edit.end;
+                        setTime(edit.end);
+                      }
+                    } else if (edit && t < edit.start) {
+                      player.currentTime = edit.start;
+                      setTime(edit.start);
                     } else setTime(t);
                   }}
                   onPlay={() => setPlaying(true)}
@@ -682,100 +1118,313 @@ export default function Editor({
                 />
               ) : (
                 <div className="preview-pending">
-                  {previewRunning && (
+                  {active.length > 0 && (
                     <LoaderCircle className="spin" size={30} />
                   )}
                   <strong>
-                    {previewRunning
-                      ? "Preparing browser preview"
-                      : originalFailed
-                        ? "This browser cannot play the original video"
-                        : "Browser preview is not available"}
+                    {active.length > 0
+                      ? "Preparing video"
+                      : "Video is not available"}
                   </strong>
                   <span>
-                    {previewRunning
-                      ? "Your original is kept for final rendering."
-                      : "Use Generate browser preview below to create a compatible copy."}
+                    {active.length > 0
+                      ? "Inspection is still running."
+                      : "The original source is missing or was removed."}
                   </span>
                 </div>
               )}
-              {visibleCues.length > 0 && (
-                <div
-                  className="caption-preview"
-                  style={{
-                    fontFamily: style.font,
-                    fontSize: (style.size * height) / 1080,
-                    color: style.color,
-                    textAlign: style.align as "left" | "center" | "right",
-                    bottom:
-                      style.position === "bottom"
-                        ? (style.margin * height) / 1080
-                        : undefined,
-                    top:
-                      style.position === "top"
-                        ? (style.margin * height) / 1080
-                        : style.position === "middle"
-                          ? "50%"
-                          : undefined,
-                    transform:
-                      style.position === "middle"
-                        ? "translateY(-50%)"
-                        : undefined,
-                    left: (style.margin * height) / 1080,
-                    right: (style.margin * height) / 1080,
-                    WebkitTextStroke: `${(style.outline * height) / 1080}px ${style.outline_color}`,
-                    textShadow: style.shadow
-                      ? `${(style.shadow * height) / 1080}px ${(style.shadow * height) / 1080}px ${(style.shadow * height) / 1080}px #0009`
-                      : "none",
-                  }}
-                >
-                  <span
+              {playbackFailed && playbackReady && (
+                <div className="preview-pending preview-failed">
+                  <strong>This browser cannot play this video</strong>
+                  <span>You can still trim and render it.</span>
+                </div>
+              )}
+              {!style.soft &&
+                (mainVisible.length > 0 || faVisible.length > 0) && (
+                  <div
+                    className="caption-preview caption-dual"
                     style={{
-                      background: style.box
-                        ? `rgba(0,0,0,${style.box_opacity})`
-                        : undefined,
-                      padding: style.box ? "2px 5px" : undefined,
+                      textAlign: style.align as "left" | "center" | "right",
+                      gap: (style.gap * height) / 1080,
+                      bottom:
+                        style.position === "bottom"
+                          ? (style.margin * height) / 1080
+                          : undefined,
+                      top:
+                        style.position === "top"
+                          ? (style.margin * height) / 1080
+                          : style.position === "middle"
+                            ? "50%"
+                            : undefined,
+                      transform:
+                        style.position === "middle"
+                          ? "translateY(-50%)"
+                          : undefined,
+                      left: (style.margin * height) / 1080,
+                      right: (style.margin * height) / 1080,
                     }}
                   >
-                    {visibleCues.map((c) => c.text).join("\n")}
-                  </span>
-                </div>
-              )}
-              {watermarkVisible && (
-                <div
-                  className="watermark-preview"
-                  ref={watermark}
-                  onPointerDown={(e) => dragFrame(e, "watermark")}
-                  style={{
-                    left: m + (frameWidth - wmWidth - 2 * m) * wm.x,
-                    top: m + (height - wmHeight - 2 * m) * wm.y,
-                    opacity: wm.opacity,
-                    color: wm.color,
-                    fontFamily: wm.font,
-                    fontSize: (wm.size * height) / 1080,
-                    width:
-                      wm.kind === "image" ? `${wm.width * 100}%` : undefined,
-                  }}
-                >
-                  {wm.kind === "image" && wm.asset_id ? (
-                    <img
-                      src={`/api/media/asset/${wm.asset_id}`}
-                      alt="Watermark"
-                      onLoad={() =>
-                        setFrameWidth(frame.current?.clientWidth || 800)
-                      }
-                    />
-                  ) : (
-                    wm.text
-                  )}
-                </div>
-              )}
+                    {mainVisible.map(({ cue, index }) =>
+                      renderCaptionLine(style.track_id, index, cue, false),
+                    )}
+                    {faVisible.map(({ cue, index }) =>
+                      renderCaptionLine(style.fa_track_id, index, cue, true),
+                    )}
+                  </div>
+                )}
+              {!style.soft &&
+                !playing &&
+                (mainVisible.length > 0 || faVisible.length > 0) && (
+                  <div className="stage-hint caption-edit-hint">
+                    <Pencil size={12} /> Paused — click a caption on the video
+                    to edit it
+                  </div>
+                )}
+              {watermarkVisible &&
+                (wm.kind === "image" ? (
+                  <div
+                    className="watermark-preview"
+                    ref={watermark}
+                    onPointerDown={(e) => dragFrame(e, "watermark")}
+                    style={{
+                      left: m + (frameWidth - wmWidth - 2 * m) * wm.x,
+                      top: m + (height - wmHeight - 2 * m) * wm.y,
+                      opacity: wm.opacity,
+                      width: `${wm.width * 100}%`,
+                    }}
+                  >
+                    {wm.asset_id ? (
+                      <img
+                        src={`/api/media/asset/${wm.asset_id}`}
+                        alt="Watermark"
+                        onLoad={() =>
+                          setFrameWidth(frame.current?.clientWidth || 800)
+                        }
+                      />
+                    ) : null}
+                  </div>
+                ) : wmTemplate ? (
+                  <div
+                    className="watermark-preview watermark-template-preview"
+                    ref={watermark}
+                    onPointerDown={(e) => dragFrame(e, "watermark")}
+                    style={{
+                      left: m + (frameWidth - 2 * m) * wm.x,
+                      top: m + (height - 2 * m) * wm.y,
+                      transform: "translate(-50%, -50%)",
+                      gap: (wmTemplate.gap_vertical * height) / 1080,
+                    }}
+                  >
+                    {wmTemplate.rows.map((row, rowIndex) => (
+                      <div
+                        className="watermark-template-row"
+                        key={rowIndex}
+                        style={{
+                          gap: (wmTemplate.gap_horizontal * height) / 1080,
+                        }}
+                      >
+                        {row
+                          .filter((element) => element.text)
+                          .map((element, elementIndex) => (
+                            <span
+                              key={elementIndex}
+                              style={{
+                                fontFamily: element.font_family,
+                                fontSize: (element.font_size * height) / 1080,
+                                fontWeight: element.bold ? 700 : 400,
+                                color: element.color,
+                                opacity: element.opacity,
+                                WebkitTextStroke: wmTemplate.border_thickness
+                                  ? `${(wmTemplate.border_thickness * height) / 1080}px ${wmTemplate.border_color}`
+                                  : undefined,
+                              }}
+                            >
+                              {element.text}
+                            </span>
+                          ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="watermark-preview"
+                    ref={watermark}
+                    onPointerDown={(e) => dragFrame(e, "watermark")}
+                    style={{
+                      left: m + (frameWidth - wmWidth - 2 * m) * wm.x,
+                      top: m + (height - wmHeight - 2 * m) * wm.y,
+                      opacity: wm.opacity,
+                      color: wm.color,
+                      fontFamily: wm.font,
+                      fontSize: (wm.size * height) / 1080,
+                    }}
+                  >
+                    {wm.text}
+                  </div>
+                ))}
             </div>
             {cropDrag && (
               <span className="stage-hint">
                 <Move size={14} /> Drag the video to reframe
               </span>
             )}
+          </div>
+          <div className={"timeline-panel" + (refine ? " refining" : "")}>
+            <div className="timeline-scroll" ref={timelineScroll}>
+              <div
+                className="timeline-content"
+                style={{ width: `${zoom * 100}%` }}
+              >
+                <div className="timeline-ruler dynamic">
+                  {timelineTicks.map((tick) => (
+                    <span
+                      className="timeline-tick"
+                      key={tick.toFixed(3)}
+                      style={{
+                        left: `${percentAtTime(tick)}%`,
+                        transform:
+                          tick <= rangeStart
+                            ? "none"
+                            : tick >= rangeEnd - tickStep * 0.5
+                              ? "translateX(-100%)"
+                              : "translateX(-50%)",
+                      }}
+                    >
+                      <i />
+                      <em>{tickLabel(tick, tickStep)}</em>
+                    </span>
+                  ))}
+                </div>
+                <div
+                  className="timeline"
+                  ref={timeline}
+                  onPointerDown={(e) => {
+                    if (e.target !== e.currentTarget || !timeline.current)
+                      return;
+                    const r = timeline.current.getBoundingClientRect();
+                    seek(timeAtFraction((e.clientX - r.left) / r.width));
+                  }}
+                  onDoubleClick={() => zoomTo(1)}
+                >
+                  <div className="timeline-texture" />
+                  <div
+                    className="clip-selection"
+                    style={{
+                      left: `${percentAtTime(edit.start)}%`,
+                      width: `${((edit.end - edit.start) / rangeSpan) * 100}%`,
+                    }}
+                  >
+                    <button
+                      className="trim-handle start"
+                      aria-label="Drag clip start"
+                      onPointerDown={(e) => dragHandle(e, "start")}
+                    >
+                      Ⅱ
+                    </button>
+                    <span>SELECTED CLIP</span>
+                    <button
+                      className="trim-handle end"
+                      aria-label="Drag clip end"
+                      onPointerDown={(e) => dragHandle(e, "end")}
+                    >
+                      Ⅱ
+                    </button>
+                  </div>
+                  <div
+                    className="playhead"
+                    role="slider"
+                    tabIndex={0}
+                    aria-label="Playhead position"
+                    aria-valuemin={0}
+                    aria-valuemax={duration}
+                    aria-valuenow={Number(time.toFixed(3))}
+                    aria-valuetext={timecode(time)}
+                    onPointerDown={dragPlayhead}
+                    onKeyDown={nudgePlayhead}
+                    style={{ left: `${percentAtTime(time)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="timeline-bottom">
+              <Button
+                type="button"
+                variant={refine ? "default" : "secondary"}
+                size="sm"
+                className="timeline-refine"
+                aria-pressed={!!refine}
+                title={
+                  refine
+                    ? "Finish refining this selection"
+                    : "Cut again inside the current selection"
+                }
+                onClick={refine ? endRefine : startRefine}
+              >
+                <Scissors />
+                {refine ? "Done" : "Refine"}
+              </Button>
+              <div className="timeline-zoom-controls">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="zoom-button"
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                  disabled={zoom <= 1}
+                  onClick={() => nudgeZoom(1 / 1.6)}
+                >
+                  <ZoomOut />
+                </Button>
+                <span
+                  className="zoom-readout"
+                  aria-live="polite"
+                  title="Scroll over the timeline to zoom"
+                >
+                  {zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="zoom-button"
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                  disabled={zoom >= MAX_ZOOM}
+                  onClick={() => nudgeZoom(1.6)}
+                >
+                  <ZoomIn />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="zoom-fit"
+                  disabled={zoom === 1}
+                  onClick={() => zoomTo(1)}
+                >
+                  <Scan /> Fit
+                </Button>
+              </div>
+              <div className="timeline-bottom-actions">
+                <button
+                  className="text-link"
+                  onClick={() =>
+                    root("start", Math.min(time, edit.end - MIN_CLIP))
+                  }
+                >
+                  Set start here
+                </button>
+                <button
+                  className="text-link"
+                  onClick={() =>
+                    root("end", Math.max(time, edit.start + MIN_CLIP))
+                  }
+                >
+                  Set end here
+                </button>
+              </div>
+            </div>
           </div>
           <div className="player-controls">
             <button
@@ -787,32 +1436,29 @@ export default function Editor({
               {playing ? <Pause size={21} /> : <Play size={21} />}
             </button>
             <span className="player-time">
-              {clock(time)} <span>/ {clock(duration)}</span>
+              {timecode(time)} <span>/ {clock(duration)}</span>
             </span>
             <div className="player-spacer" />
             <Volume2 size={16} />
-            <input
+            <RangeSlider
               className="volume-slider"
               aria-label="Playback volume"
-              type="range"
               min={0}
               max={1}
               step={0.01}
-              value={volume}
-              onChange={(e) => setVolume(Number(e.target.value))}
+              value={[volume]}
+              onValueChange={([value]) => setVolume(value)}
             />
-            <select
+            <Select
               className="speed-select"
               aria-label="Playback speed"
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
-            >
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((v) => (
-                <option key={v} value={v}>
-                  {v}×
-                </option>
-              ))}
-            </select>
+              value={String(speed)}
+              onChange={(v) => setSpeed(Number(v))}
+              options={[0.5, 0.75, 1, 1.25, 1.5, 2].map((v) => [
+                String(v),
+                `${v}×`,
+              ])}
+            />
             <button
               className={"icon-button " + (loop ? "selected" : "")}
               aria-label="Loop selected clip"
@@ -829,121 +1475,6 @@ export default function Editor({
               <Maximize size={17} />
             </button>
           </div>
-          <div className="preview-options">
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={project.auto_preview}
-                disabled={previewBusy}
-                onChange={(e) => changeAutoPreview(e.target.checked)}
-              />
-              Generate browser preview automatically
-            </label>
-            <button
-              className="secondary"
-              disabled={previewBusy || previewRunning || !project.has_source}
-              onClick={generatePreview}
-            >
-              {previewRunning ? (
-                <LoaderCircle className="spin" size={15} />
-              ) : (
-                <Play size={15} />
-              )}
-              {previewRunning
-                ? "Generating preview…"
-                : cachedPlayback
-                  ? "Use browser preview"
-                  : "Generate browser preview"}
-            </button>
-          </div>
-          <p className="hint">
-            {project.auto_preview
-              ? "A compatible preview is generated only when needed."
-              : "Automatic conversion is off. Try the original, or generate a preview yourself."}
-            {useOriginal &&
-              project.metadata.audio.length > 1 &&
-              " Original playback uses the video's default audio track; a generated preview plays your selected track."}
-          </p>
-          <div className="timeline-panel">
-            <div className="timeline-label">
-              <span>
-                <Scissors size={14} /> Your selected moment
-              </span>
-              <strong>
-                {clock(edit.end - edit.start)} <small>selected</small>
-              </strong>
-            </div>
-            <div className="timeline-ruler">
-              {Array.from({ length: 7 }, (_, i) => (
-                <span key={i}>{clock((duration * i) / 6)}</span>
-              ))}
-            </div>
-            <div
-              className="timeline"
-              ref={timeline}
-              onPointerDown={(e) => {
-                if (e.target !== e.currentTarget || !timeline.current) return;
-                const r = timeline.current.getBoundingClientRect();
-                seek(((e.clientX - r.left) / r.width) * duration);
-              }}
-            >
-              <div className="timeline-texture" />
-              <div
-                className="clip-selection"
-                style={{
-                  left: `${(edit.start / duration) * 100}%`,
-                  width: `${((edit.end - edit.start) / duration) * 100}%`,
-                }}
-              >
-                <button
-                  className="trim-handle start"
-                  aria-label="Drag clip start"
-                  onPointerDown={(e) => dragHandle(e, "start")}
-                >
-                  Ⅱ
-                </button>
-                <span>SELECTED CLIP</span>
-                <button
-                  className="trim-handle end"
-                  aria-label="Drag clip end"
-                  onPointerDown={(e) => dragHandle(e, "end")}
-                >
-                  Ⅱ
-                </button>
-              </div>
-              <div
-                className="playhead"
-                style={{ left: `${(time / duration) * 100}%` }}
-              />
-            </div>
-            <input
-              className="seek-slider"
-              aria-label="Seek video"
-              type="range"
-              min={0}
-              max={duration}
-              step={0.01}
-              value={time}
-              onChange={(e) => seek(Number(e.target.value))}
-            />
-            <div className="timeline-bottom">
-              <span>Drag the handles to choose your clip</span>
-              <div>
-                <button
-                  className="text-link"
-                  onClick={() => root("start", Math.min(time, edit.end - 0.05))}
-                >
-                  Set start here
-                </button>
-                <button
-                  className="text-link"
-                  onClick={() => root("end", Math.max(time, edit.start + 0.05))}
-                >
-                  Set end here
-                </button>
-              </div>
-            </div>
-          </div>
           {edit.audio.music_id && (
             <audio
               ref={music}
@@ -959,7 +1490,7 @@ export default function Editor({
                 {active
                   .map(
                     (j) =>
-                      `${j.kind === "proxy" ? "Browser preview" : j.kind === "render" ? "Rendering" : "Processing"} · ${j.progress.toFixed(0)}%`,
+                      `${j.kind === "render" ? "Rendering" : j.kind === "cover" ? "Cover" : "Processing"} · ${j.progress.toFixed(0)}%`,
                   )
                   .join("  /  ")}
               </span>
@@ -1042,13 +1573,33 @@ export default function Editor({
                 )}
                 <div className="clip-summary">
                   <span>Clip duration</span>
-                  <strong>{clock(edit.end - edit.start)}</strong>
+                  <strong>{timecode(edit.end - edit.start)}</strong>
                 </div>
+                <Button
+                  type="button"
+                  variant={refine ? "default" : "secondary"}
+                  className="mt-2 w-full text-xs"
+                  aria-pressed={!!refine}
+                  onClick={refine ? endRefine : startRefine}
+                >
+                  <Scissors size={14} />
+                  {refine
+                    ? "Finish refining"
+                    : "Cut again inside this selection"}
+                </Button>
+                {refine && (
+                  <p className="hint">
+                    The timeline is focused on {timecode(refine.start)} –{" "}
+                    {timecode(refine.end)}. Drag the handles or playhead to trim
+                    it further.
+                  </p>
+                )}
                 <div className="control-divider" />
                 <h3>Export settings</h3>
                 <label>
                   Output filename
-                  <input
+                  <Input
+                    className="h-8 text-xs"
                     value={edit.filename}
                     onChange={(e) => root("filename", e.target.value)}
                     maxLength={100}
@@ -1123,13 +1674,32 @@ export default function Editor({
                 >
                   <Save size={16} /> Save subtitle settings as defaults
                 </button>
+                <button
+                  className="secondary wide"
+                  disabled={busy || !project.has_source || !!autoSubtitleJob}
+                  onClick={() => autoSubtitles()}
+                >
+                  {autoSubtitleJob ? (
+                    <LoaderCircle className="spin" size={16} />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}{" "}
+                  {autoSubtitleJob
+                    ? `Transcribing & translating ${autoSubtitleJob.progress.toFixed(0)}%`
+                    : "Auto subtitle (English + فارسی)"}
+                </button>
+                <p className="hint">
+                  ElevenLabs transcribes the voice, then the 9Router AI model
+                  translates it to Persian. Both tracks use Viditor's layout:
+                  English above, Persian below in yellow.
+                </p>
                 <label>
-                  Subtitle track
+                  English / main subtitle track
                   <Select
                     value={style.track_id}
                     onChange={(v) => update("subtitles", "track_id", v)}
                     options={[
-                      ["", "No subtitles"],
+                      ["", "No main subtitles"],
                       ...(project.subtitles || []).map((t) => [
                         t.id,
                         `${t.title}${!t.editable ? " (image — unsupported)" : ""}`,
@@ -1137,36 +1707,64 @@ export default function Editor({
                     ]}
                   />
                 </label>
-                <FileButton
-                  label="Upload subtitles"
-                  accept=".srt,.ass,.ssa,.vtt"
-                  disabled={busy}
-                  onFile={(f) => upload("subtitles", f)}
-                />
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={style.burn}
-                    onChange={(e) =>
-                      update("subtitles", "burn", e.target.checked)
-                    }
-                  />{" "}
-                  Permanently add captions to the export
+                <label>
+                  Persian subtitle track
+                  <Select
+                    value={style.fa_track_id}
+                    onChange={(v) => update("subtitles", "fa_track_id", v)}
+                    options={[
+                      ["", "No Persian subtitles"],
+                      ...(project.subtitles || []).map((t) => [
+                        t.id,
+                        `${t.title}${!t.editable ? " (image — unsupported)" : ""}`,
+                      ]),
+                    ]}
+                  />
                 </label>
+                <div className="form-row">
+                  <FileButton
+                    label="Upload English"
+                    accept=".srt,.ass,.ssa,.vtt"
+                    disabled={busy}
+                    onFile={(f) => upload("subtitles", f, "main")}
+                  />
+                  <FileButton
+                    label="Upload Persian"
+                    accept=".srt,.ass,.ssa,.vtt"
+                    disabled={busy}
+                    onFile={(f) => upload("subtitles", f, "fa")}
+                  />
+                </div>
+                <Check
+                  checked={style.burn}
+                  onChange={(v) => update("subtitles", "burn", v)}
+                >
+                  Permanently add both captions to the export
+                </Check>
+                <Check
+                  checked={style.soft}
+                  onChange={(v) => update("subtitles", "soft", v)}
+                >
+                  Use the video's original soft subtitles
+                </Check>
+                <p className="hint">
+                  Off by default. When a video already has embedded soft
+                  subtitles, VideoEdit ignores them and uses the editable
+                  English and Persian tracks above for the preview and export.
+                  Turn this on to keep the source soft-subtitle track instead
+                  (preview support depends on the browser; exports use an MP4
+                  text track).
+                </p>
                 {project.subtitles
                   ?.find((t) => t.id === style.track_id)
                   ?.codec.match(/ass|ssa/) && (
                   <>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={style.preserve_ass}
-                        onChange={(e) =>
-                          update("subtitles", "preserve_ass", e.target.checked)
-                        }
-                      />{" "}
+                    <Check
+                      checked={style.preserve_ass}
+                      onChange={(v) => update("subtitles", "preserve_ass", v)}
+                    >
                       Preserve original ASS styling
-                    </label>
+                    </Check>
                     <p className="hint">
                       Original ASS styling is shown exactly in rendered
                       previews. Cue text edits and custom style apply when this
@@ -1183,6 +1781,12 @@ export default function Editor({
                     onChange={(v) => update("subtitles", "font", v)}
                   />
                 </label>
+                <Check
+                  checked={style.bold}
+                  onChange={(v) => update("subtitles", "bold", v)}
+                >
+                  Bold
+                </Check>
                 <Slider
                   label="Font size"
                   value={style.size}
@@ -1230,16 +1834,12 @@ export default function Editor({
                     />
                   </label>
                 </div>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={style.box}
-                    onChange={(e) =>
-                      update("subtitles", "box", e.target.checked)
-                    }
-                  />{" "}
+                <Check
+                  checked={style.box}
+                  onChange={(v) => update("subtitles", "box", v)}
+                >
                   Background box
-                </label>
+                </Check>
                 {style.box && (
                   <Slider
                     label="Box opacity"
@@ -1291,15 +1891,109 @@ export default function Editor({
                     />
                   </label>
                 </div>
-                {style.track_id &&
-                  project.subtitles?.find((t) => t.id === style.track_id)
-                    ?.editable === 1 && (
+                <div className="control-divider" />
+                <div className="section-heading">
+                  <h3>
+                    <Languages size={14} /> Persian caption style
+                  </h3>
+                  <span>Viditor layout</span>
+                </div>
+                <label>
+                  Persian font
+                  <Select
+                    value={style.fa_font}
+                    options={fonts}
+                    onChange={(v) => update("subtitles", "fa_font", v)}
+                  />
+                </label>
+                <Check
+                  checked={style.fa_bold}
+                  onChange={(v) => update("subtitles", "fa_bold", v)}
+                >
+                  Bold Persian text
+                </Check>
+                <Slider
+                  label="Persian font size"
+                  value={style.fa_size}
+                  min={12}
+                  max={160}
+                  step={1}
+                  suffix="px"
+                  onChange={(v) => update("subtitles", "fa_size", v)}
+                />
+                <div className="form-row">
+                  <label>
+                    Persian color
+                    <Color
+                      value={style.fa_color}
+                      name="Persian text color"
+                      onChange={(v) => update("subtitles", "fa_color", v)}
+                    />
+                  </label>
+                  <label>
+                    Persian outline
+                    <Color
+                      value={style.fa_outline_color}
+                      name="Persian outline color"
+                      onChange={(v) =>
+                        update("subtitles", "fa_outline_color", v)
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="form-row">
+                  <label>
+                    Persian outline width
+                    <Num
+                      value={style.fa_outline}
+                      min={0}
+                      max={12}
+                      onChange={(v) => update("subtitles", "fa_outline", v)}
+                    />
+                  </label>
+                  <label>
+                    Gap above Persian (px)
+                    <Num
+                      value={style.gap}
+                      min={0}
+                      max={200}
+                      onChange={(v) => update("subtitles", "gap", v)}
+                    />
+                  </label>
+                </div>
+                {(style.track_id || style.fa_track_id) && (
                     <>
                       <div className="control-divider" />
                       <div className="section-heading">
                         <h3>Edit caption text</h3>
                         <span>{cues.length} cues</span>
                       </div>
+                      {style.track_id && style.fa_track_id && (
+                        <div className="form-actions">
+                          <button
+                            className={
+                              cueRole === "main" ? "primary" : "secondary"
+                            }
+                            onClick={() => {
+                              setCueRole("main");
+                              setCuePage(0);
+                            }}
+                          >
+                            English track
+                          </button>
+                          <button
+                            className={
+                              cueRole === "fa" ? "primary" : "secondary"
+                            }
+                            onClick={() => {
+                              setCueRole("fa");
+                              setCuePage(0);
+                            }}
+                          >
+                            فارسی track
+                          </button>
+                        </div>
+                      )}
                       <div className="cue-list">
                         {cues
                           .slice(cuePage * 20, cuePage * 20 + 20)
@@ -1308,7 +2002,8 @@ export default function Editor({
                             return (
                               <div className="cue" key={i}>
                                 <div className="cue-times">
-                                  <input
+                                  <Input
+                                    className="h-7 px-1.5 text-[10px]"
                                     aria-label={`Cue ${i + 1} start`}
                                     type="number"
                                     step={0.001}
@@ -1328,7 +2023,8 @@ export default function Editor({
                                     }
                                   />
                                   <span>→</span>
-                                  <input
+                                  <Input
+                                    className="h-7 px-1.5 text-[10px]"
                                     aria-label={`Cue ${i + 1} end`}
                                     type="number"
                                     step={0.001}
@@ -1359,7 +2055,8 @@ export default function Editor({
                                     <Trash2 size={13} />
                                   </button>
                                 </div>
-                                <textarea
+                                <Textarea
+                                  className="min-h-14 text-[11px]"
                                   aria-label={`Cue ${i + 1} text`}
                                   value={cue.text}
                                   onFocus={() => seek(cue.start + style.offset)}
@@ -1416,18 +2113,24 @@ export default function Editor({
                         </button>
                         <button
                           className="primary"
+                          disabled={!listTrackId}
                           onClick={() =>
-                            api(
-                              `/projects/${id}/subtitles/${style.track_id}`,
-                              json("PUT", cues),
+                            listTrackId &&
+                            saveTrackCues(
+                              listTrackId,
+                              cues,
+                              "Caption text saved.",
                             )
-                              .then(() => toast("Caption text saved."))
-                              .catch((e) => onError(e.message))
                           }
                         >
                           <Save size={14} /> Save cues
                         </button>
                       </div>
+                      <p className="hint">
+                        To edit on the video itself, pause playback and click a
+                        caption line. Press Ctrl/⌘+Enter or click elsewhere to
+                        save.
+                      </p>
                     </>
                   )}
               </>
@@ -1537,42 +2240,67 @@ export default function Editor({
                 </label>
                 {wm.kind === "text" && (
                   <>
-                    <label>
-                      Watermark text
-                      <input
-                        value={wm.text}
-                        maxLength={300}
-                        onChange={(e) =>
-                          update("watermark", "text", e.target.value)
+                    {wm.template ? (
+                      <WatermarkTemplateEditor
+                        template={wm.template}
+                        onChange={(template) =>
+                          update("watermark", "template", template)
                         }
-                        placeholder="@yourname"
                       />
-                    </label>
-                    <label>
-                      Font
-                      <Select
-                        value={wm.font}
-                        options={fonts}
-                        onChange={(v) => update("watermark", "font", v)}
-                      />
-                    </label>
-                    <Slider
-                      label="Text size"
-                      value={wm.size}
-                      min={12}
-                      max={200}
-                      step={1}
-                      suffix="px"
-                      onChange={(v) => update("watermark", "size", v)}
-                    />
-                    <label>
-                      Color
-                      <Color
-                        value={wm.color}
-                        name="Watermark color"
-                        onChange={(v) => update("watermark", "color", v)}
-                      />
-                    </label>
+                    ) : (
+                      <>
+                        <label>
+                          Watermark text
+                          <Input
+                            className="h-8 text-xs"
+                            value={wm.text}
+                            maxLength={300}
+                            onChange={(e) =>
+                              update("watermark", "text", e.target.value)
+                            }
+                            placeholder="@yourname"
+                          />
+                        </label>
+                        <label>
+                          Font
+                          <Select
+                            value={wm.font}
+                            options={fonts}
+                            onChange={(v) => update("watermark", "font", v)}
+                          />
+                        </label>
+                        <Slider
+                          label="Text size"
+                          value={wm.size}
+                          min={12}
+                          max={200}
+                          step={1}
+                          suffix="px"
+                          onChange={(v) => update("watermark", "size", v)}
+                        />
+                        <label>
+                          Color
+                          <Color
+                            value={wm.color}
+                            name="Watermark color"
+                            onChange={(v) => update("watermark", "color", v)}
+                          />
+                        </label>
+                        <button
+                          className="secondary wide"
+                          type="button"
+                          onClick={() =>
+                            update(
+                              "watermark",
+                              "template",
+                              templateFromLegacy(wm),
+                            )
+                          }
+                        >
+                          <Stamp size={16} /> Use multi-element template
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
                 {wm.kind === "image" && (
@@ -1608,14 +2336,16 @@ export default function Editor({
                 )}
                 {wm.kind !== "none" && (
                   <>
-                    <Slider
-                      label="Opacity"
-                      value={wm.opacity}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      onChange={(v) => update("watermark", "opacity", v)}
-                    />
+                    {(!wm.template || wm.kind === "image") && (
+                      <Slider
+                        label="Opacity"
+                        value={wm.opacity}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        onChange={(v) => update("watermark", "opacity", v)}
+                      />
+                    )}
                     <label>
                       Corner preset
                       <Select
@@ -1628,8 +2358,17 @@ export default function Editor({
                           ["br", "Bottom right"],
                         ]}
                         onChange={(v) => {
-                          update("watermark", "x", v.endsWith("l") ? 0 : 1);
-                          update("watermark", "y", v.startsWith("t") ? 0 : 1);
+                          const edge = wm.template ? 0.12 : 0;
+                          update(
+                            "watermark",
+                            "x",
+                            v.endsWith("l") ? edge : 1 - edge,
+                          );
+                          update(
+                            "watermark",
+                            "y",
+                            v.startsWith("t") ? edge : 1 - edge,
+                          );
                         }}
                       />
                     </label>
@@ -1671,7 +2410,8 @@ export default function Editor({
                       </label>
                       <label>
                         Until (s)
-                        <input
+                        <Input
+                          className="h-8 text-xs"
                           type="number"
                           min={0}
                           step={0.1}
@@ -1716,14 +2456,12 @@ export default function Editor({
                     }}
                   />
                 </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={edit.audio.mute}
-                    onChange={(e) => update("audio", "mute", e.target.checked)}
-                  />{" "}
+                <Check
+                  checked={edit.audio.mute}
+                  onChange={(v) => update("audio", "mute", v)}
+                >
                   Mute original audio
-                </label>
+                </Check>
                 <Slider
                   label="Original volume"
                   value={edit.audio.volume}
@@ -1809,7 +2547,8 @@ function Num({
   step?: number;
 }) {
   return (
-    <input
+    <Input
+      className="h-8 text-xs"
       type="number"
       value={Number(value.toFixed(3))}
       min={min}
@@ -1821,23 +2560,39 @@ function Num({
     />
   );
 }
+const EMPTY_VALUE = "__empty__";
 function Select({
   value,
   onChange,
   options,
+  className,
+  "aria-label": ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: string[][];
+  className?: string;
+  "aria-label"?: string;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {options.map(([id, label]) => (
-        <option key={id} value={id}>
-          {label}
-        </option>
-      ))}
-    </select>
+    <SelectRoot
+      value={value === "" ? EMPTY_VALUE : value}
+      onValueChange={(next) => onChange(next === EMPTY_VALUE ? "" : next)}
+    >
+      <SelectTrigger
+        className={"h-8 text-xs " + (className || "")}
+        aria-label={ariaLabel}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(([id, label]) => (
+          <SelectItem key={id || EMPTY_VALUE} value={id || EMPTY_VALUE}>
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </SelectRoot>
   );
 }
 function Slider({
@@ -1858,7 +2613,7 @@ function Slider({
   onChange: (v: number) => void;
 }) {
   return (
-    <label className="slider-label">
+    <div className="slider-label">
       <span>
         {label}
         <strong>
@@ -1866,15 +2621,34 @@ function Slider({
           {suffix}
         </strong>
       </span>
-      <input
-        type="range"
-        value={value}
+      <RangeSlider
+        className="my-1.5"
+        value={[value]}
         min={min}
         max={max}
         step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onValueChange={([next]) => onChange(next)}
       />
-    </label>
+    </div>
+  );
+}
+function Check({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Label className="check text-[10px] font-normal text-[#b7bfcd]">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(value) => onChange(value === true)}
+      />
+      <span>{children}</span>
+    </Label>
   );
 }
 function FileButton({
@@ -1925,7 +2699,8 @@ function Color({
         onInput={(e) => onChange(e.currentTarget.value)}
         onChange={(e) => onChange(e.target.value)}
       />
-      <input
+      <Input
+        className="h-8 px-1.5 text-[10px]"
         type="text"
         aria-label={name}
         value={draft}

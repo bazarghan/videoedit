@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 FontFamily = Literal[
+    "Arial",
     "DejaVu Sans",
     "DejaVu Serif",
     "Liberation Sans",
@@ -12,6 +13,7 @@ FontFamily = Literal[
     "Shabnam",
     "Sahel",
     "IRANYekanWeb",
+    "IRANYekanWeb ExtraBold",
 ]
 
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
@@ -20,8 +22,10 @@ BUNDLED_FONTS = {
     "Shabnam": FONT_DIR / "Shabnam.ttf",
     "Sahel": FONT_DIR / "Sahel.ttf",
     "IRANYekanWeb": FONT_DIR / "IRANYekanWebRegular.ttf",
+    "IRANYekanWeb ExtraBold": FONT_DIR / "IRANYekanWebExtraBold.ttf",
 }
 FONT_SLUGS = {
+    "arial": "Arial",
     "sans": "DejaVu Sans",
     "serif": "DejaVu Serif",
     "liberation-sans": "Liberation Sans",
@@ -31,13 +35,15 @@ FONT_SLUGS = {
     "shabnam": "Shabnam",
     "sahel": "Sahel",
     "iranyekanweb": "IRANYekanWeb",
+    "iranyekanweb-extra-bold": "IRANYekanWeb ExtraBold",
 }
 
 
-async def font_path(family: FontFamily) -> Path:
+async def font_path(family: FontFamily, bold: bool = False) -> Path:
     if family in BUNDLED_FONTS:
         return BUNDLED_FONTS[family]
+    pattern = f"{family}:bold" if bold else family
     proc = await asyncio.create_subprocess_exec(
-        "fc-match", "-f", "%{file}", family, stdout=asyncio.subprocess.PIPE
+        "fc-match", "-f", "%{file}", pattern, stdout=asyncio.subprocess.PIPE
     )
     return Path((await proc.communicate())[0].decode())

@@ -19,6 +19,7 @@ import {
   Check,
   ChevronRight,
   HardDrive,
+  Sparkles,
 } from "lucide-react";
 import {
   api,
@@ -36,6 +37,17 @@ import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
 import TelegramCover from "./TelegramCover";
+import { Checkbox } from "./components/ui/checkbox";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import { Textarea } from "./components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 
 const emptyProxy: DownloadProxyDraft = {
   host: "",
@@ -70,7 +82,6 @@ export default function App() {
     [name, setName] = useState(""),
     [tab, setTab] = useState("url"),
     [progress, setProgress] = useState(0);
-  const [autoPreview, setAutoPreview] = useState(false);
   const [useProxy, setUseProxy] = useState(false),
     [proxy, setProxy] = useState<DownloadProxyDraft>(emptyProxy),
     [proxyBusy, setProxyBusy] = useState(false);
@@ -156,7 +167,6 @@ export default function App() {
           url,
           name: name || "Imported video",
           use_proxy: useProxy,
-          auto_preview: autoPreview,
         }),
       );
       setUrl("");
@@ -203,7 +213,6 @@ export default function App() {
     setProgress(0);
     const form = new FormData();
     form.append("file", file);
-    form.append("auto_preview", String(autoPreview));
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/import/upload");
     xhr.upload.onprogress = (e) => {
@@ -465,7 +474,10 @@ export default function App() {
               <div>
                 <span className="eyebrow">KEEP THINGS MOVING</span>
                 <h1>Activity</h1>
-                <p>Downloads, previews, renders, and Telegram uploads.</p>
+                <p>
+                  Downloads, automatic subtitles, previews, renders, and
+                  Telegram uploads.
+                </p>
               </div>
               <span className="pill">One render at a time</span>
             </div>
@@ -486,6 +498,8 @@ export default function App() {
                         <Check size={22} />
                       ) : j.kind === "download" ? (
                         <Download size={22} />
+                      ) : j.kind === "autosubtitle" ? (
+                        <Sparkles size={22} />
                       ) : (
                         <Film size={22} />
                       )}
@@ -497,9 +511,9 @@ export default function App() {
                             {
                               download: "Download",
                               ingest: "Inspect video",
-                              proxy: "Browser preview",
                               render: "Render clip",
                               cover: "Telegram cover",
+                              autosubtitle: "Auto subtitle",
                               telegram: "Send to Telegram",
                             }[j.kind]
                           }
@@ -746,24 +760,11 @@ export default function App() {
                 <Upload size={15} /> Upload a file
               </button>
             </div>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={autoPreview}
-                disabled={busy}
-                onChange={(e) => setAutoPreview(e.target.checked)}
-              />
-              Generate browser preview automatically
-            </label>
-            <p className="hint">
-              Leave off to try the original video without conversion. You can
-              generate a preview later in the editor.
-            </p>
             {tab === "url" ? (
               <form onSubmit={importURL}>
                 <label>
                   Direct video URL
-                  <textarea
+                  <Textarea
                     required
                     placeholder="https://example.com/video.mp4?token=…"
                     value={url}
@@ -776,7 +777,7 @@ export default function App() {
                 </p>
                 <label>
                   Project name <span className="muted">(optional)</span>
-                  <input
+                  <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="A moment worth keeping"
@@ -932,37 +933,44 @@ export default function App() {
                 >
                   <label>
                     Destination
-                    <select
-                      value={dest}
-                      onChange={(e) => setDest(e.target.value)}
+                    <Select
+                      value={dest || "me"}
+                      onValueChange={(value) => setDest(value)}
                     >
-                      {(destinations.length
-                        ? destinations
-                        : [{ id: "me", name: "Saved Messages" }]
-                      ).map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        className="h-9 text-xs"
+                        aria-label="Destination"
+                      >
+                        <SelectValue placeholder="Choose a destination" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(destinations.length
+                          ? destinations
+                          : [{ id: "me", name: "Saved Messages" }]
+                        ).map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label>
                     Caption
-                    <textarea
+                    <Textarea
                       value={caption}
                       onChange={(e) => setCaption(e.target.value)}
                       maxLength={1024}
                       placeholder="Add a caption…"
                     />
                   </label>
-                  <label className="check">
-                    <input
-                      type="checkbox"
+                  <Label className="check">
+                    <Checkbox
                       checked={asFile}
-                      onChange={(e) => setAsFile(e.target.checked)}
-                    />{" "}
-                    Send as a file instead of a playable video
-                  </label>
+                      onCheckedChange={(value) => setAsFile(value === true)}
+                    />
+                    <span>Send as a file instead of a playable video</span>
+                  </Label>
                   <button className="primary" disabled={coverPending}>
                     <Send size={16} /> Send now
                   </button>
@@ -1019,7 +1027,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         <p>Sign in to start creating.</p>
         <label>
           Username
-          <input
+          <Input
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -1028,7 +1036,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         </label>
         <label>
           Password
-          <input
+          <Input
             type="password"
             autoComplete="current-password"
             value={password}

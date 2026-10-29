@@ -70,6 +70,21 @@ def preset():
         start=2,
         end=8,
     )
+    template = defaults["watermark"]["template"]
+    if template:
+        template["rows"] = [
+            [
+                {
+                    **template["rows"][0][0],
+                    "text": "My channel",
+                    "font_family": "Shabnam",
+                    "font_size": 55,
+                    "color": "#ff0000",
+                    "opacity": 0.5,
+                }
+            ]
+        ]
+        template["repeat"] = False
     return defaults
 
 
@@ -142,11 +157,22 @@ def test_persistent_defaults_snapshot_for_both_imports_and_ingest(client, monkey
     )
     monkeypatch.setattr(media, "run", AsyncMock())
 
-    async def add_subtitle(project_id, *args):
+    async def add_subtitle(project_id, *args, **kwargs):
         ident = s.uid()
         s.execute(
-            "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?)",
-            (ident, project_id, "English", "eng", "subrip", "[]", None, 1),
+            "INSERT INTO subtitles VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                ident,
+                project_id,
+                "English",
+                "eng",
+                "subrip",
+                "[]",
+                None,
+                1,
+                "main",
+                "embedded",
+            ),
         )
         return ident
 
@@ -158,7 +184,8 @@ def test_persistent_defaults_snapshot_for_both_imports_and_ingest(client, monkey
         edit = project["edit"]
         assert edit["start"] == 0 and edit["end"] == 12.5
         track_id = edit["subtitles"].pop("track_id")
-        assert track_id == project["subtitles"][0]["id"]
+        assert edit["subtitles"].pop("fa_track_id") == ""
+        assert track_id == ""
         assert edit["subtitles"] == defaults["subtitles"]
         assert edit["watermark"] == defaults["watermark"]
     third = import_url(client)

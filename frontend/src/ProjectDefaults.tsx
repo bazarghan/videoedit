@@ -1,6 +1,18 @@
 import { useState } from "react";
-import { LoaderCircle, Save, SlidersHorizontal } from "lucide-react";
+import { LoaderCircle, Save, SlidersHorizontal, Stamp } from "lucide-react";
 import { api, fonts, json, ProjectDefaults } from "./types";
+import WatermarkTemplateEditor from "./WatermarkTemplate";
+import { templateFromLegacy } from "./watermark";
+import { Checkbox } from "./components/ui/checkbox";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 
 type Props = {
   initial: ProjectDefaults;
@@ -27,7 +39,8 @@ function NumberField({
   return (
     <label>
       {label}
-      <input
+      <Input
+        className="h-9 text-xs"
         type="number"
         value={value}
         min={min}
@@ -54,18 +67,43 @@ function SelectField({
   return (
     <label>
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((option) => {
-          const [value, title] =
-            typeof option === "string" ? [option, option] : option;
-          return (
-            <option key={value} value={value}>
-              {title}
-            </option>
-          );
-        })}
-      </select>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-9 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => {
+            const [optionValue, title] =
+              typeof option === "string" ? [option, option] : option;
+            return (
+              <SelectItem key={optionValue} value={optionValue}>
+                {title}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
     </label>
+  );
+}
+
+function Check({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Label className="check text-[11px] font-normal text-[#b7bfcd]">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(value) => onChange(value === true)}
+      />
+      <span>{children}</span>
+    </Label>
   );
 }
 
@@ -201,20 +239,24 @@ export default function ProjectDefaultsPanel({
           <div className="defaults-columns">
             <div>
               <h3>Subtitles</h3>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={subtitles.burn}
-                  onChange={(e) => subtitle("burn", e.target.checked)}
-                />{" "}
+              <Check
+                checked={subtitles.burn}
+                onChange={(value) => subtitle("burn", value)}
+              >
                 Add captions to exports
-              </label>
+              </Check>
               <SelectField
                 label="Font family"
                 value={subtitles.font}
                 options={fonts}
                 onChange={(value) => subtitle("font", value)}
               />
+              <Check
+                checked={subtitles.bold}
+                onChange={(value) => subtitle("bold", value)}
+              >
+                Bold
+              </Check>
               <NumberField
                 label="Font size (px)"
                 value={subtitles.size}
@@ -252,14 +294,12 @@ export default function ProjectDefaultsPanel({
                   onChange={(value) => subtitle("shadow", value)}
                 />
               </div>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={subtitles.box}
-                  onChange={(e) => subtitle("box", e.target.checked)}
-                />{" "}
+              <Check
+                checked={subtitles.box}
+                onChange={(value) => subtitle("box", value)}
+              >
                 Background box
-              </label>
+              </Check>
               {subtitles.box && (
                 <NumberField
                   label="Box opacity (0–1)"
@@ -301,18 +341,73 @@ export default function ProjectDefaultsPanel({
                   onChange={(value) => subtitle("offset", value)}
                 />
               </div>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={subtitles.preserve_ass}
-                  onChange={(e) => subtitle("preserve_ass", e.target.checked)}
-                />{" "}
+              <Check
+                checked={subtitles.preserve_ass}
+                onChange={(value) => subtitle("preserve_ass", value)}
+              >
                 Preserve original ASS styling
-              </label>
+              </Check>
+              <Check
+                checked={subtitles.soft}
+                onChange={(value) => subtitle("soft", value)}
+              >
+                Use the video's original soft subtitles
+              </Check>
+              <div className="control-divider" />
+              <h3>Persian subtitles</h3>
+              <SelectField
+                label="Persian font family"
+                value={subtitles.fa_font}
+                options={fonts}
+                onChange={(value) => subtitle("fa_font", value)}
+              />
+              <Check
+                checked={subtitles.fa_bold}
+                onChange={(value) => subtitle("fa_bold", value)}
+              >
+                Bold Persian text
+              </Check>
+              <NumberField
+                label="Persian font size (px)"
+                value={subtitles.fa_size}
+                min={12}
+                max={160}
+                onChange={(value) => subtitle("fa_size", value)}
+              />
+              <div className="form-row">
+                <ColorField
+                  label="Persian color"
+                  value={subtitles.fa_color}
+                  onChange={(value) => subtitle("fa_color", value)}
+                />
+                <ColorField
+                  label="Persian outline color"
+                  value={subtitles.fa_outline_color}
+                  onChange={(value) => subtitle("fa_outline_color", value)}
+                />
+              </div>
+              <div className="form-row">
+                <NumberField
+                  label="Persian outline"
+                  value={subtitles.fa_outline}
+                  min={0}
+                  max={12}
+                  step={0.1}
+                  onChange={(value) => subtitle("fa_outline", value)}
+                />
+                <NumberField
+                  label="Gap above Persian (px)"
+                  value={subtitles.gap}
+                  min={0}
+                  max={200}
+                  step={0.5}
+                  onChange={(value) => subtitle("gap", value)}
+                />
+              </div>
               <p className="hint">
-                The first embedded text track is selected automatically.
-                Original ASS styling overrides these style controls when
-                enabled.
+                Defaults match Viditor: English in white Arial above, Persian
+                in yellow IRAN Yekan ExtraBold below. Embedded source soft
+                subtitles are ignored unless this option is on.
               </p>
             </div>
             <div>
@@ -329,33 +424,52 @@ export default function ProjectDefaultsPanel({
               />
               {watermark.kind === "text" && (
                 <>
-                  <label>
-                    Watermark text
-                    <input
-                      value={watermark.text}
-                      maxLength={300}
-                      placeholder="@yourname"
-                      onChange={(e) => mark("text", e.target.value)}
+                  {watermark.template ? (
+                    <WatermarkTemplateEditor
+                      template={watermark.template}
+                      onChange={(template) => mark("template", template)}
                     />
-                  </label>
-                  <SelectField
-                    label="Font family"
-                    value={watermark.font}
-                    options={fonts}
-                    onChange={(value) => mark("font", value)}
-                  />
-                  <NumberField
-                    label="Text size (px)"
-                    value={watermark.size}
-                    min={12}
-                    max={200}
-                    onChange={(value) => mark("size", value)}
-                  />
-                  <ColorField
-                    label="Text color"
-                    value={watermark.color}
-                    onChange={(value) => mark("color", value)}
-                  />
+                  ) : (
+                    <>
+                      <label>
+                        Watermark text
+                        <Input
+                          className="h-9 text-xs"
+                          value={watermark.text}
+                          maxLength={300}
+                          placeholder="@yourname"
+                          onChange={(e) => mark("text", e.target.value)}
+                        />
+                      </label>
+                      <SelectField
+                        label="Font family"
+                        value={watermark.font}
+                        options={fonts}
+                        onChange={(value) => mark("font", value)}
+                      />
+                      <NumberField
+                        label="Text size (px)"
+                        value={watermark.size}
+                        min={12}
+                        max={200}
+                        onChange={(value) => mark("size", value)}
+                      />
+                      <ColorField
+                        label="Text color"
+                        value={watermark.color}
+                        onChange={(value) => mark("color", value)}
+                      />
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() =>
+                          mark("template", templateFromLegacy(watermark))
+                        }
+                      >
+                        <Stamp size={16} /> Use multi-element template
+                      </button>
+                    </>
+                  )}
                 </>
               )}
               {watermark.kind === "image" && (
@@ -389,38 +503,42 @@ export default function ProjectDefaultsPanel({
               )}
               {watermark.kind !== "none" && (
                 <>
-                  <NumberField
-                    label="Opacity (0–1)"
-                    value={watermark.opacity}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    onChange={(value) => mark("opacity", value)}
-                  />
+                  {(!watermark.template || watermark.kind === "image") && (
+                    <NumberField
+                      label="Opacity (0–1)"
+                      value={watermark.opacity}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      onChange={(value) => mark("opacity", value)}
+                    />
+                  )}
                   <label>
                     Corner preset
-                    <select
+                    <Select
                       value=""
-                      onChange={(e) => {
-                        const value = e.target.value;
+                      onValueChange={(value) => {
+                        const edge = watermark.template ? 0.12 : 0;
                         setDraft((old) => ({
                           ...old,
                           watermark: {
                             ...old.watermark,
-                            x: value.endsWith("l") ? 0 : 1,
-                            y: value.startsWith("t") ? 0 : 1,
+                            x: value.endsWith("l") ? edge : 1 - edge,
+                            y: value.startsWith("t") ? edge : 1 - edge,
                           },
                         }));
                       }}
                     >
-                      <option value="" disabled>
-                        Choose a corner…
-                      </option>
-                      <option value="tl">Top left</option>
-                      <option value="tr">Top right</option>
-                      <option value="bl">Bottom left</option>
-                      <option value="br">Bottom right</option>
-                    </select>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Choose a corner…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tl">Top left</SelectItem>
+                        <SelectItem value="tr">Top right</SelectItem>
+                        <SelectItem value="bl">Bottom left</SelectItem>
+                        <SelectItem value="br">Bottom right</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </label>
                   <div className="form-row">
                     <NumberField
@@ -457,7 +575,8 @@ export default function ProjectDefaultsPanel({
                     />
                     <label>
                       Until (s)
-                      <input
+                      <Input
+                        className="h-9 text-xs"
                         type="number"
                         min={0.1}
                         step={0.1}

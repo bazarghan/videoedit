@@ -18,20 +18,33 @@ class Cue(Strict):
 class SubtitleDefaults(Strict):
     burn: bool = True
     preserve_ass: bool = False
-    font: FontFamily = "DejaVu Sans"
-    size: int = Field(default=48, ge=12, le=160)
+    soft: bool = False
+    font: FontFamily = "Arial"
+    size: int = Field(default=60, ge=12, le=160)
+    bold: bool = True
     color: str = "#ffffff"
     outline_color: str = "#000000"
-    outline: float = Field(default=2, ge=0, le=12)
-    shadow: float = Field(default=1, ge=0, le=12)
+    outline: float = Field(default=3.75, ge=0, le=12)
+    shadow: float = Field(default=0, ge=0, le=12)
+    # Viditor's Farsi track uses IRAN Yekan ExtraBold in yellow below the
+    # main language. Sizes and margins use the same 1080-pixel reference as
+    # the main track. The defaults mirror Viditor's 384×288 ASS values.
+    fa_font: FontFamily = "IRANYekanWeb ExtraBold"
+    fa_size: int = Field(default=60, ge=12, le=160)
+    fa_bold: bool = False
+    fa_color: str = "#ffff00"
+    fa_outline_color: str = "#000000"
+    fa_outline: float = Field(default=3.75, ge=0, le=12)
+    fa_shadow: float = Field(default=0, ge=0, le=12)
+    gap: float = Field(default=22.5, ge=0, le=200)
     box: bool = False
     box_opacity: float = Field(default=0.5, ge=0, le=1)
     position: Literal["bottom", "middle", "top"] = "bottom"
     align: Literal["left", "center", "right"] = "center"
-    margin: int = Field(default=60, ge=0, le=400)
+    margin: int = Field(default=90, ge=0, le=400)
     offset: float = Field(default=0, ge=-600, le=600)
 
-    @field_validator("color", "outline_color")
+    @field_validator("color", "outline_color", "fa_color", "fa_outline_color")
     @classmethod
     def hex_color(cls, v):
         import re
@@ -43,6 +56,25 @@ class SubtitleDefaults(Strict):
 
 class SubtitleStyle(SubtitleDefaults):
     track_id: str = ""
+    fa_track_id: str = ""
+
+
+class AutoSubtitleRequest(Strict):
+    language: str = Field(default="en", min_length=2, max_length=12)
+    translate: bool = True
+
+
+class AIConfig(Strict):
+    api_key: str = Field(default="", max_length=512)
+    base_url: str = Field(default="http://localhost:20128/v1", max_length=500)
+    model: str = Field(default="kr/claude-sonnet-4.5", max_length=200)
+    clear_key: bool = False
+
+
+class ElevenLabsConfig(Strict):
+    api_key: str = Field(default="", max_length=512)
+    model: str = Field(default="scribe_v1", max_length=100)
+    clear_key: bool = False
 
 
 class Crop(Strict):
@@ -52,21 +84,77 @@ class Crop(Strict):
     y: float = Field(default=0.5, ge=0, le=1)
 
 
+class WatermarkText(Strict):
+    text: str = Field(default="", max_length=300)
+    font_family: FontFamily = "Arial"
+    font_size: int = Field(default=60, ge=8, le=400)
+    bold: bool = True
+    color: str = "#ffffff"
+    opacity: float = Field(default=0.2, ge=0, le=1)
+    alignment: Literal["left", "center", "right"] = "left"
+    _color = field_validator("color")(SubtitleStyle.hex_color.__func__)
+
+
+class WatermarkTemplate(Strict):
+    rows: list[list[WatermarkText]] = Field(default_factory=list)
+    gap_horizontal: int = Field(default=36, ge=0, le=600)
+    gap_vertical: int = Field(default=36, ge=0, le=600)
+    border_color: str = "#000000"
+    border_thickness: float = Field(default=0, ge=0, le=20)
+    decay_time: float = Field(default=2, gt=0, le=120)
+    replication_count: int = Field(default=5, ge=1, le=50)
+    repeat: bool = True
+    _color = field_validator("border_color")(SubtitleStyle.hex_color.__func__)
+
+
+def default_watermark_text():
+    # Mirrors Viditor's active default template, scaled to the 1080-pixel
+    # reference height used by this app.
+    return WatermarkText(
+        text="TELEGRAM: @hl_clips",
+        font_family="Arial",
+        font_size=60,
+        bold=True,
+        color="#ffffff",
+        opacity=0.2,
+        alignment="left",
+    )
+
+
+def default_watermark_template():
+    return WatermarkTemplate(rows=[[default_watermark_text()]])
+
+
 class Watermark(Strict):
-    kind: Literal["none", "text", "image"] = "none"
+    kind: Literal["none", "text", "image"] = "text"
+    template: WatermarkTemplate | None = None
     text: str = Field(default="", max_length=300)
     asset_id: str = ""
-    x: float = Field(default=0.95, ge=0, le=1)
-    y: float = Field(default=0.05, ge=0, le=1)
-    size: int = Field(default=38, ge=12, le=200)
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.5, ge=0, le=1)
+    size: int = Field(default=60, ge=12, le=200)
     width: float = Field(default=0.18, ge=0.02, le=0.8)
     opacity: float = Field(default=0.8, ge=0, le=1)
-    margin: int = Field(default=24, ge=0, le=400)
+    margin: int = Field(default=0, ge=0, le=400)
     color: str = "#ffffff"
-    font: FontFamily = "DejaVu Sans"
+    font: FontFamily = "Arial"
     start: float = Field(default=0, ge=0)
     end: float | None = Field(default=None, gt=0)
     _color = field_validator("color")(SubtitleStyle.hex_color.__func__)
+
+
+def default_watermark():
+    return Watermark(
+        kind="text",
+        template=default_watermark_template(),
+        text="TELEGRAM: @hl_clips",
+        x=0.5,
+        y=0.5,
+        size=60,
+        margin=0,
+        color="#ffffff",
+        font="Arial",
+    )
 
 
 class Audio(Strict):
@@ -81,7 +169,7 @@ class Audio(Strict):
 
 class ProjectDefaults(Strict):
     subtitles: SubtitleDefaults = Field(default_factory=SubtitleDefaults)
-    watermark: Watermark = Field(default_factory=Watermark)
+    watermark: Watermark = Field(default_factory=default_watermark)
 
 
 class ProjectDefaultsPatch(Strict):
@@ -94,7 +182,7 @@ class Edit(Strict):
     end: float = Field(default=0, ge=0)
     subtitles: SubtitleStyle = Field(default_factory=SubtitleStyle)
     crop: Crop = Field(default_factory=Crop)
-    watermark: Watermark = Field(default_factory=Watermark)
+    watermark: Watermark = Field(default_factory=default_watermark)
     audio: Audio = Field(default_factory=Audio)
     resolution: Literal[720, 1080, 1920] = 1920
     fps: Literal[24, 25, 30, 50, 60] = 30
@@ -106,11 +194,6 @@ class ImportURL(Strict):
     url: str = Field(min_length=8, max_length=12000)
     name: str = Field(default="Imported video", min_length=1, max_length=120)
     use_proxy: bool = False
-    auto_preview: bool = True
-
-
-class PreviewPreference(Strict):
-    auto_preview: bool
 
 
 class DownloadProxyConfig(Strict):

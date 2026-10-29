@@ -19,13 +19,15 @@ from . import media
 from . import store as s
 from .font_catalog import FONT_SLUGS, font_path
 from .models import (
+    AIConfig,
+    AutoSubtitleRequest,
     CoverSelection,
     Cue,
     DownloadProxyConfig,
     Edit,
+    ElevenLabsConfig,
     ImportURL,
     Login,
-    PreviewPreference,
     ProjectDefaults,
     ProjectDefaultsPatch,
     Rename,
@@ -64,20 +66,6 @@ async def lifespan(app):
         (time.time(),),
     )
     s.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
-    # Backfill existing imports so they also qualify for direct browser playback.
-    for row in s.rows(
-        "SELECT id,source,metadata FROM projects WHERE source IS NOT NULL"
-    ):
-        metadata = json.loads(row["metadata"])
-        if "browser_container" not in metadata and Path(row["source"]).is_file():
-            try:
-                metadata.update(await media.probe(row["source"]))
-            except ValueError:
-                continue
-            s.execute(
-                "UPDATE projects SET metadata=? WHERE id=?",
-                (json.dumps(metadata), row["id"]),
-            )
     queued_covers = {
         s.decrypt(row["payload"])["clip_id"]
         for row in s.rows(
@@ -104,7 +92,8 @@ async def lifespan(app):
             )
     tasks = [
         asyncio.create_task(worker(("download", "ingest"))),
-        asyncio.create_task(worker(("proxy", "render", "cover"))),
+        asyncio.create_task(worker(("render", "cover"))),
+        asyncio.create_task(worker(("autosubtitle",))),
         asyncio.create_task(worker(("telegram",))),
     ]
     yield
@@ -279,27 +268,22 @@ def project(ident):
 
 def public_project(row):
     metadata = json.loads(row["metadata"])
-    edit = json.loads(row["edit"])
-    audio_track = edit.get("audio", {}).get("track", 0)
+    # Validate so projects saved before newer subtitle fields existed still
+    # receive the complete, current edit shape.
+    edit = Edit.model_validate(json.loads(row["edit"])).model_dump()
     return {k: row[k] for k in ("id", "name", "status", "created")} | {
         "metadata": metadata,
         "edit": edit,
         "has_source": bool(row["source"]),
-        "auto_preview": bool(row["auto_preview"]),
-        "has_preview": media.cached_preview(row, audio_track) is not None,
-        "preview_audio_track": audio_track,
-        "source_playback_type": media.browser_source_type(metadata)
-        if row["source"]
-        else None,
         "has_thumbnail": bool(row["thumbnail"]),
     }
 
 
-def new_project(name, status="queued", source=None, ident=None, auto_preview=True):
+def new_project(name, status="queued", source=None, ident=None):
     ident = ident or s.uid()
     edit = initial_edit(ident)
     s.execute(
-        "INSERT INTO projects(id,name,status,source,edit,created,auto_preview) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO projects(id,name,status,source,edit,created) VALUES (?,?,?,?,?,?)",
         (
             ident,
             name,
@@ -307,7 +291,6 @@ def new_project(name, status="queued", source=None, ident=None, auto_preview=Tru
             source,
             edit.model_dump_json(),
             time.time(),
-            auto_preview,
         ),
     )
     return ident
@@ -347,7 +330,7 @@ async def import_url(body: ImportURL):
             )
         payload["proxy"] = config
     s.space_for()
-    ident = new_project(body.name, auto_preview=body.auto_preview)
+    ident = new_project(body.name)
     job_id = s.job("download", ident, payload)
     return {"project_id": ident, "job_id": job_id}
 
@@ -395,14 +378,14 @@ async def save_upload(file, path, limit):
 
 
 @app.post("/api/import/upload")
-async def import_upload(file: UploadFile = File(...), auto_preview: bool = Form(True)):
+async def import_upload(file: UploadFile = File(...)):
     ident = s.uid()
     path = s.DATA / "sources" / (ident + ".media")
     try:
         await save_upload(file, path, int(s.setting("storage_limit_gb", 20)) * 1024**3)
         signature(path, "video")
         name = Path(file.filename or "Uploaded video").stem[:120]
-        new_project(name, source=str(path), ident=ident, auto_preview=auto_preview)
+        new_project(name, source=str(path), ident=ident)
         job_id = s.job("ingest", ident, {"path": str(path)})
         return {"project_id": ident, "job_id": job_id}
     except BaseException:
@@ -455,91 +438,18 @@ async def render_project(ident: str, body: Edit, preview: bool = False):
                 "subtitle_snapshot": s.one(
                     "SELECT * FROM subtitles WHERE id=? AND project_id=?",
                     (body.subtitles.track_id, ident),
-                ),
+                )
+                if body.subtitles.track_id
+                else None,
+                "subtitle_snapshot_fa": s.one(
+                    "SELECT * FROM subtitles WHERE id=? AND project_id=?",
+                    (body.subtitles.fa_track_id, ident),
+                )
+                if body.subtitles.fa_track_id
+                else None,
             },
         )
     }
-
-
-@app.post("/api/projects/{ident}/preview")
-async def create_proxy(
-    ident: str, audio_track: int = 0, force: bool = False, automatic: bool = False
-):
-    row = project(ident)
-    if not row["source"]:
-        raise ValueError("The source is no longer available.")
-    if automatic and not row["auto_preview"]:
-        return {"job_id": None, "skipped": True}
-    if audio_track < 0 or audio_track >= max(
-        1, len(json.loads(row["metadata"]).get("audio", []))
-    ):
-        raise ValueError("Choose a valid audio track.")
-    metadata = json.loads(row["metadata"])
-    if not force and media.browser_source_type(metadata, audio_track):
-        return {"job_id": None, "direct": True}
-    if media.cached_preview(row, audio_track):
-        return {"job_id": None, "direct": False}
-    active = next(
-        (
-            job
-            for job in s.rows(
-                "SELECT id,payload FROM jobs WHERE project_id=? AND kind='proxy' AND status IN ('queued','running')",
-                (ident,),
-            )
-            if s.decrypt(job["payload"]).get("audio_track", 0) == audio_track
-            and (
-                not media.browser_source_type(metadata, audio_track)
-                or s.decrypt(job["payload"]).get("force")
-            )
-        ),
-        None,
-    )
-    if active and not automatic:
-        payload = s.decrypt(active["payload"])
-        payload.update(automatic=False, force=force or payload.get("force", False))
-        s.execute(
-            "UPDATE jobs SET payload=? WHERE id=?", (s.encrypt(payload), active["id"])
-        )
-    return {
-        "job_id": active["id"]
-        if active
-        else s.job(
-            "proxy",
-            ident,
-            {"audio_track": audio_track, "force": force, "automatic": automatic},
-        )
-    }
-
-
-@app.patch("/api/projects/{ident}/preview-settings")
-async def preview_settings(ident: str, body: PreviewPreference):
-    row = project(ident)
-    s.execute(
-        "UPDATE projects SET auto_preview=? WHERE id=?", (body.auto_preview, ident)
-    )
-    if not body.auto_preview:
-        for job in s.rows(
-            "SELECT id,payload FROM jobs WHERE project_id=? AND kind='proxy' AND status IN ('queued','running')",
-            (ident,),
-        ):
-            payload = s.decrypt(job["payload"])
-            if payload.get("automatic", not payload.get("force", False)):
-                s.update_job(
-                    job["id"],
-                    status="cancelled",
-                    finished=time.time(),
-                    error="Automatic preview generation disabled.",
-                )
-        if json.loads(row["metadata"]).get("duration") and row["status"] in (
-            "ready",
-            "processing",
-            "cancelled",
-        ):
-            s.execute("UPDATE projects SET status='ready' WHERE id=?", (ident,))
-    elif row["source"] and json.loads(row["metadata"]).get("duration"):
-        track = json.loads(row["edit"]).get("audio", {}).get("track", 0)
-        await create_proxy(ident, audio_track=track, automatic=True)
-    return public_project(project(ident))
 
 
 @app.get("/api/projects/{ident}/subtitles/{track_id}")
@@ -573,8 +483,14 @@ async def edit_subtitles(ident: str, track_id: str, body: list[Cue]):
 
 
 @app.post("/api/projects/{ident}/subtitles")
-async def upload_subtitles(ident: str, file: UploadFile = File(...)):
+async def upload_subtitles(
+    ident: str,
+    file: UploadFile = File(...),
+    role: str = Form(default=""),
+):
     project(ident)
+    if role not in ("", "main", "fa"):
+        raise ValueError("Choose a valid subtitle language role.")
     extension = Path(file.filename or "").suffix.lower()
     if extension not in (".srt", ".ass", ".ssa", ".vtt"):
         raise ValueError("Choose an SRT, ASS, SSA or VTT file.")
@@ -586,10 +502,33 @@ async def upload_subtitles(ident: str, file: UploadFile = File(...)):
             path,
             Path(file.filename).name,
             codec=extension[1:] if extension in (".ass", ".ssa") else "subrip",
+            role=role,
+            origin="upload",
         )
         return {"track_id": track_id}
     finally:
         path.unlink(missing_ok=True)
+
+
+@app.post("/api/projects/{ident}/autosubtitle")
+async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
+    project(ident)
+    if s.one(
+        "SELECT id FROM jobs WHERE project_id=? AND kind='autosubtitle' AND status IN ('queued','running')",
+        (ident,),
+    ):
+        raise ValueError("Automatic subtitles are already running for this project.")
+    if not s.setting("elevenlabs", {}).get("api_key"):
+        raise ValueError("Add your ElevenLabs API token in Settings first.")
+    if body.translate and not s.setting("ai", {}).get("api_key"):
+        raise ValueError("Add your 9Router API token in Settings first.")
+    return {
+        "job_id": s.job(
+            "autosubtitle",
+            ident,
+            {"language": body.language, "translate": body.translate},
+        )
+    }
 
 
 @app.post("/api/projects/{ident}/assets/{kind}")
@@ -657,7 +596,7 @@ async def cancel_job(ident: str):
         s.update_job(
             ident, status="cancelled", finished=time.time(), error="Cancelled by you."
         )
-        if row["kind"] in ("download", "ingest", "proxy"):
+        if row["kind"] in ("download", "ingest"):
             s.execute(
                 "UPDATE projects SET status='cancelled' WHERE id=?",
                 (row["project_id"],),
@@ -699,29 +638,16 @@ async def clips():
 
 
 @app.get("/api/media/project/{ident}/{kind}")
-async def project_media(
-    ident: str,
-    kind: str,
-    audio_track: int = 0,
-    force_preview: bool = False,
-    original: bool = False,
-):
+async def project_media(ident: str, kind: str):
     row = project(ident)
-    if kind not in ("source", "preview", "thumbnail"):
+    if kind not in ("source", "thumbnail"):
         raise HTTPException(404, "This media is not available yet.")
-    media_type = "image/jpeg" if kind == "thumbnail" else "application/octet-stream"
-    if kind == "preview":
-        direct_type = media.browser_source_type(
-            json.loads(row["metadata"]), audio_track
-        )
-        if row["source"] and (original or (direct_type and not force_preview)):
-            path = Path(row["source"])
-            media_type = media.original_media_type(json.loads(row["metadata"]))
-        else:
-            path = media.cached_preview(row, audio_track)
-            media_type = "video/mp4"
-    else:
-        path = Path(row[kind]) if row[kind] else None
+    path = Path(row[kind]) if row[kind] else None
+    media_type = (
+        "image/jpeg"
+        if kind == "thumbnail"
+        else media.original_media_type(json.loads(row["metadata"]))
+    )
     if path is None:
         raise HTTPException(404, "This media is not available yet.")
     if not path.exists():
@@ -836,7 +762,7 @@ async def delete_clip(ident: str):
 async def delete_project(ident: str):
     row = project(ident)
     require_idle(ident)
-    paths = [row[k] for k in ("source", "preview", "thumbnail") if row[k]]
+    paths = [row[k] for k in ("source", "thumbnail") if row[k]]
     paths += [
         r["path"]
         for r in s.rows("SELECT path FROM assets WHERE project_id=?", (ident,))
@@ -851,13 +777,29 @@ async def delete_project(ident: str):
         for r in s.rows("SELECT ass_path FROM subtitles WHERE project_id=?", (ident,))
         if r["ass_path"]
     ]
-    paths += [str(p) for p in (s.DATA / "previews").glob(ident + "-*")]
     for path in paths:
         Path(path).unlink(missing_ok=True)
     for table in ("assets", "clips", "subtitles", "jobs"):
         s.execute(f"DELETE FROM {table} WHERE project_id=?", (ident,))
     s.execute("DELETE FROM projects WHERE id=?", (ident,))
     return {"ok": True}
+
+
+def ai_settings():
+    config = s.setting("ai", {})
+    return {
+        "base_url": config.get("base_url", "http://localhost:20128/v1"),
+        "model": config.get("model", "kr/claude-sonnet-4.5"),
+        "api_key_saved": bool(config.get("api_key")),
+    }
+
+
+def elevenlabs_settings():
+    config = s.setting("elevenlabs", {})
+    return {
+        "model": config.get("model", "scribe_v1"),
+        "api_key_saved": bool(config.get("api_key")),
+    }
 
 
 @app.get("/api/settings")
@@ -873,7 +815,59 @@ async def get_settings():
         "telegram_status": await telegram.status(),
         "storage": storage_info(),
         "project_defaults": get_defaults().model_dump(),
+        "ai": ai_settings(),
+        "elevenlabs": elevenlabs_settings(),
     }
+
+
+@app.put("/api/settings/ai")
+async def save_ai_settings(body: AIConfig):
+    from urllib.parse import urlparse
+
+    base_url = body.base_url.strip().rstrip("/")
+    parsed = urlparse(base_url)
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(
+            "Enter the 9Router base URL, for example http://localhost:20128/v1."
+        )
+    existing = s.setting("ai", {})
+    api_key = existing.get("api_key", "")
+    if body.clear_key:
+        api_key = ""
+    elif body.api_key.strip():
+        api_key = body.api_key.strip()
+    s.set_setting(
+        "ai",
+        {
+            "api_key": api_key,
+            "base_url": base_url,
+            "model": body.model.strip() or "kr/claude-sonnet-4.5",
+        },
+    )
+    return ai_settings()
+
+
+@app.put("/api/settings/elevenlabs")
+async def save_elevenlabs_settings(body: ElevenLabsConfig):
+    existing = s.setting("elevenlabs", {})
+    api_key = existing.get("api_key", "")
+    if body.clear_key:
+        api_key = ""
+    elif body.api_key.strip():
+        api_key = body.api_key.strip()
+    s.set_setting(
+        "elevenlabs",
+        {
+            "api_key": api_key,
+            "model": body.model.strip() or "scribe_v1",
+        },
+    )
+    return elevenlabs_settings()
 
 
 @app.get("/api/settings/project-defaults")
@@ -959,8 +953,9 @@ async def set_storage(body: StorageConfig):
 def storage_info():
     usage = {
         name: s.directory_bytes(s.DATA / name)
-        for name in ("sources", "previews", "subtitles", "assets", "renders", "work")
+        for name in ("sources", "subtitles", "assets", "renders", "work")
     }
+    usage["thumbnails"] = s.directory_bytes(s.DATA / "previews")
     return {
         "used": s.used_bytes(),
         "free": shutil.disk_usage(s.DATA).free,
@@ -972,15 +967,16 @@ def storage_info():
 @app.post("/api/settings/cleanup/{kind}")
 async def cleanup(kind: str):
     require_idle()
-    if kind not in ("previews", "sources", "renders"):
-        raise ValueError("Choose sources, previews or renders.")
-    for path in (s.DATA / kind).iterdir():
+    if kind not in ("thumbnails", "sources", "renders"):
+        raise ValueError("Choose sources, thumbnails or renders.")
+    directory = s.DATA / ("previews" if kind == "thumbnails" else kind)
+    for path in directory.iterdir():
         if path.is_file():
             path.unlink()
     if kind == "sources":
         s.execute("UPDATE projects SET source=NULL,status='source removed'")
-    elif kind == "previews":
-        s.execute("UPDATE projects SET preview=NULL,thumbnail=NULL")
+    elif kind == "thumbnails":
+        s.execute("UPDATE projects SET thumbnail=NULL")
     else:
         s.execute("DELETE FROM clips")
     return storage_info()
