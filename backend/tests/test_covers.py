@@ -133,6 +133,92 @@ def test_automatic_backfill_manual_frame_reset_and_cleanup(legacy_clip):
         assert all(not path.exists() for path in files)
 
 
+def test_prerender_cover_frames_and_render_use_clean_source_frame(tmp_path):
+    pid = new_project("Pre-render cover", "ready")
+    source = tmp_path / "source.mp4"
+    ffmpeg(
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=640x360:r=30:d=1",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=640x360:r=30:d=1",
+        "-filter_complex",
+        "[0:v][1:v]concat=n=2:v=1:a=0",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        source,
+    )
+    s.execute(
+        "UPDATE projects SET source=?, metadata=? WHERE id=?",
+        (
+            str(source),
+            json.dumps(
+                {
+                    "duration": 2,
+                    "width": 640,
+                    "height": 360,
+                    "fps": 30,
+                    "audio": [],
+                    "subtitles": [],
+                }
+            ),
+            pid,
+        ),
+    )
+    try:
+        with TestClient(app) as client:
+            login(client)
+            created = client.post(
+                f"/api/projects/{pid}/cover-frames",
+                json={"count": 3, "start": 0, "end": 2},
+            )
+            assert created.status_code == 200, created.text
+            frames = created.json()["frames"]
+            assert len(frames) == 3
+            for frame in frames:
+                assert client.get(frame["url"]).content.startswith(b"\xff\xd8")
+            selected = client.put(
+                f"/api/projects/{pid}/cover-frame",
+                json={"time": 0.25, "start": 0, "end": 1.5},
+            )
+            assert selected.status_code == 200, selected.text
+            assert selected.json()["cover_frame"]["time"] == 0.25
+            preview = client.get(f"/api/media/project/{pid}/cover-frame")
+            assert preview.status_code == 200
+            preview_path = tmp_path / "preview.jpg"
+            preview_path.write_bytes(preview.content)
+            blue = rgb(preview_path)
+            assert blue[2] > 240 and blue[0] < 10
+
+            edit = client.get(f"/api/projects/{pid}").json()["edit"]
+            edit.update(start=0, end=1.5)
+            rendered = client.post(f"/api/projects/{pid}/render", json=edit)
+            assert rendered.status_code == 200, rendered.text
+            job = wait_job(client, rendered.json()["job_id"])
+            clip = next(
+                c for c in client.get("/api/clips").json() if c["id"] == job["result_id"]
+            )
+            assert clip["metadata"]["cover"]["origin"] == "prerender"
+            assert clip["metadata"]["cover"]["time"] == 0.25
+            clip_row = s.one("SELECT * FROM clips WHERE id=?", (clip["id"],))
+            color = rgb(media.cover_paths(clip_row)[0])
+            assert color[2] > 240 and color[0] < 10
+    finally:
+        for path in (s.DATA / "renders").glob(f"{pid}-*.jpg"):
+            path.unlink(missing_ok=True)
+        for table in ("jobs", "clips", "projects"):
+            s.execute(
+                f"DELETE FROM {table} WHERE {'id' if table == 'projects' else 'project_id'}=?",
+                (pid,),
+            )
+        source.unlink(missing_ok=True)
+
+
 def test_cover_failure_preserves_previous_selection(legacy_clip, monkeypatch):
     ident, _ = legacy_clip
     clip = s.one("SELECT * FROM clips WHERE id=?", (ident,))

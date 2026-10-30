@@ -1,8 +1,15 @@
-"""Encrypted StringSession; login codes and 2FA passwords remain in memory only."""
+"""Telegram delivery through a bot account.
+
+The Telegram Bot API only accepts uploads up to 20 MB, so clips are uploaded
+through MTProto using the bot token together with an API ID and API hash.
+This keeps large renders available without signing in as a personal account.
+"""
 
 import asyncio
 import json
+import re
 import time
+from pathlib import Path
 
 from telethon import TelegramClient, errors, functions, types, utils
 from telethon.sessions import StringSession
@@ -17,89 +24,95 @@ from .media import (
     update_cover,
 )
 
+BOT_FILE_LIMIT = 2 * 1024**3
+CHANNEL_ID = re.compile(r"-?\d+")
+
+
+def public_channel(channel):
+    return {
+        "id": str(channel["id"]),
+        "name": channel.get("name") or "Telegram channel",
+        "username": channel.get("username") or "",
+        "verified": channel.get("verified") or 0,
+        "error": channel.get("error") or "",
+    }
+
 
 class Telegram:
     def __init__(self):
         self.client = None
-        self.phone_hash = None
+        self.client_key = None
         self.lock = asyncio.Lock()
-        self.pending_since = 0
 
     async def get(self):
         config = s.setting("telegram", {})
         if not config.get("api_id") or not config.get("api_hash"):
-            raise ValueError(
-                "Save your Telegram API ID, API hash and phone number first."
-            )
-        if self.client is None:
-            self.client = TelegramClient(
-                StringSession(s.setting("telegram_session", "")),
-                config["api_id"],
-                config["api_hash"],
-                request_retries=2,
-                connection_retries=2,
-                flood_sleep_threshold=0,
-            )
-        if not self.client.is_connected():
-            await self.client.connect()
+            raise ValueError("Save your Telegram API ID and API hash first.")
+        if not config.get("bot_token"):
+            raise ValueError("Save your Telegram bot token first.")
+        key = (config["api_id"], config["api_hash"], config["bot_token"])
+        async with self.lock:
+            if self.client is None or self.client_key != key:
+                if self.client is not None:
+                    await self.client.disconnect()
+                session = s.setting("telegram_session", "")
+                if session and not s.setting("telegram_bot_session", False):
+                    # Never reuse a session created by the old account login.
+                    session = ""
+                    s.set_setting("telegram_session", "")
+                self.client = TelegramClient(
+                    StringSession(session),
+                    config["api_id"],
+                    config["api_hash"],
+                    request_retries=2,
+                    connection_retries=2,
+                    flood_sleep_threshold=0,
+                )
+                self.client_key = key
+            if not self.client.is_connected():
+                await self.client.connect()
+            if not await self.client.is_user_authorized():
+                await self.client.sign_in(bot_token=config["bot_token"])
+                await self.save_session()
         return self.client
 
     async def save_session(self):
-        s.set_setting("telegram_session", self.client.session.save())
+        if self.client is not None:
+            s.set_setting("telegram_session", self.client.session.save())
+            s.set_setting("telegram_bot_session", True)
 
     async def status(self):
-        if not s.setting("telegram_session"):
-            return {
-                "connected": False,
-                "step": "code" if self.phone_hash else "connect",
-            }
+        config = s.setting("telegram", {})
+        configured = bool(
+            config.get("api_id") and config.get("api_hash") and config.get("bot_token")
+        )
+        if not configured:
+            return {"connected": False, "configured": False}
         try:
             client = await self.get()
-            if not await client.is_user_authorized():
-                return {"connected": False, "step": "connect"}
             me = await client.get_me()
             return {
                 "connected": True,
-                "name": (" ".join(filter(None, [me.first_name, me.last_name]))),
+                "configured": True,
+                "name": " ".join(filter(None, [me.first_name, me.last_name]))
+                or "Telegram bot",
                 "username": me.username,
             }
-        except Exception:
+        except Exception as exc:
             return {
                 "connected": False,
-                "step": "connect",
-                "error": "Telegram is unreachable. Try connecting again.",
+                "configured": True,
+                "error": error_message(exc),
             }
 
-    async def connect(self):
-        async with self.lock:
-            client = await self.get()
-            if await client.is_user_authorized():
-                return await self.status()
-            phone = s.setting("telegram")["phone"]
-            sent = await client.send_code_request(phone)
-            self.phone_hash = sent.phone_code_hash
-            self.pending_since = time.time()
-            return {"connected": False, "step": "code"}
-
-    async def verify(self, code="", password=""):
-        async with self.lock:
-            if not self.phone_hash or time.time() - self.pending_since > 600:
-                raise ValueError("Request a new login code before signing in.")
-            client = await self.get()
-            try:
-                if password:
-                    await client.sign_in(password=password)
-                else:
-                    await client.sign_in(
-                        phone=s.setting("telegram")["phone"],
-                        code=code,
-                        phone_code_hash=self.phone_hash,
-                    )
-            except errors.SessionPasswordNeededError:
-                return {"connected": False, "step": "password"}
-            await self.save_session()
-            self.phone_hash = None
-            return await self.status()
+    async def check(self):
+        status = await self.status()
+        if not status["connected"]:
+            raise ValueError(
+                status.get("error")
+                or "Connect your Telegram bot in Settings before sending."
+            )
+        return status
 
     async def disconnect(self, logout=True):
         async with self.lock:
@@ -107,69 +120,184 @@ class Telegram:
                 if logout:
                     try:
                         await self.client.log_out()
-                    finally:
-                        await self.client.disconnect()
-                else:
-                    await self.client.disconnect()
-            elif logout and s.setting("telegram_session"):
-                client = await self.get()
-                try:
-                    await client.log_out()
-                finally:
-                    await client.disconnect()
+                    except Exception:
+                        pass
+                await self.client.disconnect()
             self.client = None
-            self.phone_hash = None
+            self.client_key = None
             if logout:
                 s.set_setting("telegram_session", "")
+                s.set_setting("telegram_bot_session", False)
 
-    async def dialogs(self):
+    async def _resolve(self, value):
         client = await self.get()
-        if not await client.is_user_authorized():
-            raise ValueError("Connect your Telegram account first.")
-        result = [{"id": "me", "name": "Saved Messages"}]
-        async for dialog in client.iter_dialogs(limit=200):
-            entity = dialog.entity
-            if getattr(entity, "left", False) or getattr(entity, "deactivated", False):
-                continue
-            if (
-                dialog.is_channel
-                and getattr(entity, "broadcast", False)
-                and not (
-                    getattr(entity, "creator", False)
-                    or getattr(entity, "admin_rights", None)
-                )
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Enter a channel username, link or ID.")
+        for prefix in (
+            "https://t.me/",
+            "http://t.me/",
+            "t.me/",
+            "https://telegram.me/",
+            "http://telegram.me/",
+            "telegram.me/",
+        ):
+            if value.lower().startswith(prefix):
+                url = value if "://" in value else "https://" + value
+                value = url.rstrip("/").split("/")[-1].split("?")[0]
+                if value.startswith("+"):
+                    # Private invite links only resolve while the bot is a member.
+                    return await client.get_entity(url)
+                break
+        if CHANNEL_ID.fullmatch(value.replace(" ", "")):
+            channel_id = int(value.replace(" ", ""))
+            try:
+                return await client.get_entity(channel_id)
+            except ValueError:
+                async for dialog in client.iter_dialogs():
+                    if dialog.entity.id == channel_id:
+                        return dialog.entity
+                raise ValueError(
+                    "The bot cannot see this channel. Add the bot to the channel "
+                    "as an administrator first."
+                ) from None
+        username = value.removeprefix("@")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,}", username):
+            raise ValueError("Enter a public @username, t.me link or channel ID.")
+        return await client.get_entity("@" + username)
+
+    async def _require_admin(self, client, entity):
+        if isinstance(entity, types.User):
+            raise ValueError("That is a user, not a channel.")
+        if not isinstance(entity, types.Channel):
+            raise ValueError("Choose a Telegram channel or supergroup.")
+        try:
+            permissions = await client.get_permissions(entity, "me")
+        except errors.UserNotParticipantError:
+            raise ValueError(
+                "The bot is not a member of this channel. Add it as an "
+                "administrator first."
+            ) from None
+        if not permissions or not permissions.is_admin:
+            raise ValueError(
+                "The bot is not an administrator of this channel. Promote the "
+                "bot to an administrator with permission to post messages."
+            )
+        if getattr(entity, "broadcast", False) and not permissions.post_messages:
+            raise ValueError(
+                "The bot is an administrator but cannot post. Give it the "
+                "Post messages permission for this channel."
+            )
+        return permissions
+
+    def _channels(self):
+        return s.setting("telegram", {}).get("channels", [])
+
+    def _save_channels(self, channels):
+        config = s.setting("telegram", {})
+        config["channels"] = channels
+        if not any(
+            str(c["id"]) == str(config.get("default_channel")) for c in channels
+        ):
+            config["default_channel"] = str(channels[0]["id"]) if channels else ""
+        s.set_setting("telegram", config)
+
+    def channel(self, ident):
+        channels = self._channels()
+        for channel in channels:
+            if str(channel["id"]) == str(ident) or (
+                channel.get("username")
+                and channel["username"].lower() == str(ident).lstrip("@").lower()
             ):
-                continue
-            if getattr(
-                getattr(entity, "default_banned_rights", None), "send_messages", False
-            ) and not getattr(entity, "admin_rights", None):
-                continue
-            result.append({"id": str(dialog.id), "name": dialog.name})
-        return result
+                return channel
+        if not channels:
+            raise ValueError("Add a Telegram channel in Settings before posting.")
+        if not ident:
+            return channels[0]
+        raise ValueError("That Telegram channel is no longer configured.")
+
+    async def list_channels(self):
+        return [public_channel(channel) for channel in self._channels()]
+
+    async def add_channel(self, value):
+        client = await self.get()
+        entity = await self._resolve(value)
+        await self._require_admin(client, entity)
+        channels = self._channels()
+        channel = {
+            "id": entity.id,
+            "access_hash": getattr(entity, "access_hash", None),
+            "name": getattr(entity, "title", None) or "Telegram channel",
+            "username": getattr(entity, "username", None) or "",
+            "verified": time.time(),
+            "error": "",
+        }
+        channels = [c for c in channels if c["id"] != channel["id"]]
+        channels.append(channel)
+        self._save_channels(channels)
+        return public_channel(channel)
+
+    async def verify_channel(self, ident):
+        client = await self.get()
+        channels = self._channels()
+        channel = self.channel(ident)
+        try:
+            entity = None
+            if channel.get("access_hash") is not None:
+                try:
+                    entity = await client.get_entity(
+                        types.InputPeerChannel(
+                            channel_id=int(channel["id"]),
+                            access_hash=int(channel["access_hash"]),
+                        )
+                    )
+                except Exception:
+                    entity = None
+            if entity is None:
+                entity = await self._resolve(
+                    channel.get("username") or str(channel["id"])
+                )
+            await self._require_admin(client, entity)
+            channel.update(
+                access_hash=getattr(entity, "access_hash", channel.get("access_hash")),
+                name=getattr(entity, "title", None) or channel["name"],
+                username=getattr(entity, "username", None) or "",
+                verified=time.time(),
+                error="",
+            )
+        except Exception as exc:
+            channel["error"] = error_message(exc)
+            channel["verified"] = 0
+            self._save_channels(channels)
+            raise
+        self._save_channels(channels)
+        return public_channel(channel)
+
+    async def remove_channel(self, ident):
+        channels = [c for c in self._channels() if str(c["id"]) != str(ident)]
+        self._save_channels(channels)
+        return [public_channel(channel) for channel in channels]
 
     async def send(self, payload, ident):
         if cancelled(ident):
             raise Cancelled()
         client = await self.get()
         if not await client.is_user_authorized():
-            raise ValueError(
-                "Connect your Telegram account in Settings before sending."
-            )
+            raise ValueError("Save a valid Telegram bot token in Settings first.")
         clip = s.one("SELECT * FROM clips WHERE id=?", (payload["clip_id"],))
         if not clip:
             raise ValueError("The rendered clip was deleted.")
-        me = await client.get_me()
-        limit = (4 if getattr(me, "premium", False) else 2) * 1024**3
-        from pathlib import Path
-
-        if Path(clip["path"]).stat().st_size >= limit:
-            raise ValueError(
-                "This clip exceeds the Telegram file-size limit for your account."
+        channel = self.channel(payload.get("destination", ""))
+        path = Path(clip["path"])
+        if path.stat().st_size >= BOT_FILE_LIMIT:
+            raise ValueError("This clip exceeds the 2 GB Telegram bot upload limit.")
+        if channel.get("access_hash") is not None:
+            entity = types.InputPeerChannel(
+                channel_id=int(channel["id"]),
+                access_hash=int(channel["access_hash"]),
             )
-        dest = payload["destination"]
-        entity = await client.get_input_entity(
-            int(dest) if dest.lstrip("-").isdigit() else dest
-        )
+        else:
+            entity = await self._resolve(channel.get("username") or str(channel["id"]))
         started = time.monotonic()
 
         async def progress(sent, total):
@@ -236,7 +364,7 @@ class Telegram:
                 nosound_video=not bool(info["audio"]),
             )
         # Covers are uploaded as media, without posting a separate photo message.
-        # Text is sent literally; Telegram markup is never interpreted.
+        # Captions come from the Telegram HTML editor, so markup is interpreted.
         await check_cancel()
         await client.send_file(
             entity,
@@ -244,7 +372,7 @@ class Telegram:
             caption=payload["caption"],
             force_document=payload["as_file"],
             supports_streaming=not payload["as_file"],
-            parse_mode=None,
+            parse_mode="html",
             progress_callback=progress,
             attributes=attributes,
             thumb=str(paths[1]) if payload["as_file"] else None,
@@ -256,22 +384,34 @@ class Telegram:
 def error_message(exc):
     if isinstance(exc, errors.FloodWaitError):
         return f"Telegram rate limit: wait {exc.seconds} seconds, then retry."
-    if isinstance(exc, (errors.PhoneCodeInvalidError, errors.PhoneCodeExpiredError)):
-        return "The code is incorrect or expired. Request another code if needed."
-    if isinstance(exc, errors.PasswordHashInvalidError):
-        return "The two-step verification password is incorrect."
+    if isinstance(
+        exc,
+        (
+            errors.UnauthorizedError,
+            errors.AuthKeyInvalidError,
+            errors.AuthKeyUnregisteredError,
+        ),
+    ):
+        return "The bot token is invalid or was revoked. Save a new token in Settings."
+    if isinstance(exc, errors.BotMethodInvalidError):
+        return "This Telegram bot cannot use that action. Check the bot token and try again."
     if isinstance(
         exc,
         (
             errors.ChatWriteForbiddenError,
             errors.UserBannedInChannelError,
             errors.ChatAdminRequiredError,
+            errors.ChannelPrivateError,
         ),
     ):
-        return "Your Telegram account does not have permission to send to this destination."
+        return "The bot does not have permission to post to this channel. Make it an administrator with Post messages access."
+    if isinstance(exc, errors.UserNotParticipantError):
+        return (
+            "The bot is not a member of this channel. Add it as an administrator first."
+        )
     if isinstance(exc, ValueError):
         return str(exc)
-    return "Telegram could not complete the request. Check your connection and account permissions, then retry."
+    return "Telegram could not complete the request. Check your bot token and channel permissions, then retry."
 
 
 telegram = Telegram()

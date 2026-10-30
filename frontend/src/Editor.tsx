@@ -96,6 +96,8 @@ function tickLabel(value: number, step: number) {
   return hours ? `${hours}:${label}` : label;
 }
 
+type CoverCandidate = { time: number; url: string };
+
 type Props = {
   id: string;
   jobs: Job[];
@@ -141,6 +143,8 @@ export default function Editor({
     [cropDrag, setCropDrag] = useState(false),
     [busy, setBusy] = useState(false),
     [autoStarting, setAutoStarting] = useState(false),
+    [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]),
+    [coverBusy, setCoverBusy] = useState(false),
     [playbackFailed, setPlaybackFailed] = useState(false),
     [stageHeight, setStageHeight] = useState(450),
     [wmBox, setWmBox] = useState({ width: 100, height: 30 }),
@@ -227,6 +231,11 @@ export default function Editor({
   );
   const renderedCurrent =
     !!project?.rendered && !!edit && stableKey(edit) === savedEditKey;
+  const coverFrame = project?.metadata.cover_frame;
+  const coverOutsideClip =
+    !!coverFrame &&
+    !!edit &&
+    (coverFrame.time < edit.start || coverFrame.time >= edit.end);
   const autoSubtitleBlocked =
     !project?.has_source || autoSubtitlesReady || autoSubtitleTooLong;
   const autoSubtitleTitle = autoSubtitlesReady
@@ -272,6 +281,8 @@ export default function Editor({
     setCuePage(0);
     setRefine(null);
     setAutoStarting(false);
+    setCoverCandidates([]);
+    setCoverBusy(false);
     setPanelOpen(false);
     setSavedEditKey("");
     api<Project>(`/projects/${id}`)
@@ -734,6 +745,63 @@ export default function Editor({
       setBusy(false);
     }
   }
+  async function generateCoverFrames() {
+    if (!edit) return;
+    setCoverBusy(true);
+    try {
+      const result = await api<{ frames: CoverCandidate[] }>(
+        `/projects/${id}/cover-frames`,
+        json("POST", {
+          count: 6,
+          start: edit.start,
+          end: edit.end,
+          edit,
+        }),
+      );
+      setCoverCandidates(result.frames);
+      toast("Six clean Telegram cover frames generated without captions.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+  async function chooseCoverFrame(value: number) {
+    if (!edit) return;
+    setCoverBusy(true);
+    try {
+      await api(
+        `/projects/${id}/cover-frame`,
+        json("PUT", {
+          time: value,
+          start: edit.start,
+          end: edit.end,
+          edit,
+        }),
+      );
+      setProject(await api<Project>(`/projects/${id}`));
+      toast(
+        `Telegram cover saved at ${timecode(value)}. The next render uses this clean frame.`,
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+  async function clearCoverFrame() {
+    if (!edit) return;
+    setCoverBusy(true);
+    try {
+      await api(`/projects/${id}/cover-frame`, json("PUT", { time: null }));
+      setProject(await api<Project>(`/projects/${id}`));
+      toast("Telegram cover selection cleared.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
   function dragPlayhead(e: React.PointerEvent<HTMLElement>) {
     if (!timeline.current) return;
     e.preventDefault();
@@ -1134,10 +1202,7 @@ export default function Editor({
           <button
             className="secondary"
             disabled={
-              busy ||
-              autoSubtitleBlocked ||
-              !!autoSubtitleJob ||
-              autoStarting
+              busy || autoSubtitleBlocked || !!autoSubtitleJob || autoStarting
             }
             onClick={() => autoSubtitles()}
             title={autoSubtitleTitle}
@@ -1198,11 +1263,7 @@ export default function Editor({
                   : undefined
             }
           >
-            {renderedCurrent ? (
-              <CheckIcon size={16} />
-            ) : (
-              <Download size={16} />
-            )}{" "}
+            {renderedCurrent ? <CheckIcon size={16} /> : <Download size={16} />}{" "}
             {renderedCurrent ? "Already rendered" : "Render clip"}
           </button>
         </div>
@@ -1814,6 +1875,120 @@ export default function Editor({
                   MP4 videos with fast-start playback and an automatic cover.
                   Open the finished clip to choose a different cover frame.
                 </p>
+                <div className="control-divider" />
+                <div className="section-heading">
+                  <h3>
+                    <Scan size={14} /> Telegram cover
+                  </h3>
+                  <span>Before captions are burned in</span>
+                </div>
+                <p className="hint">
+                  Choose a clean source frame now. The next render uses it as
+                  the Telegram cover, so the burned-in subtitles from the
+                  finished MP4 never appear in the cover.
+                </p>
+                <div className="cover-frame-picker">
+                  <div className="cover-frame-preview">
+                    {coverFrame ? (
+                      <img
+                        src={`/api/media/project/${id}/cover-frame?v=${coverFrame.revision}`}
+                        alt={`Selected Telegram cover at ${timecode(coverFrame.time)}`}
+                      />
+                    ) : (
+                      <span>
+                        <Scan size={22} />
+                        Automatic cover
+                      </span>
+                    )}
+                  </div>
+                  <div className="cover-frame-copy">
+                    <strong>
+                      {coverFrame
+                        ? `Source frame ${timecode(coverFrame.time)}`
+                        : "No frame selected"}
+                    </strong>
+                    <small>
+                      {coverFrame
+                        ? "Clean of burned-in captions"
+                        : "The rendered frame will be used after render"}
+                    </small>
+                    <div className="cover-frame-buttons">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={
+                          coverBusy ||
+                          !edit ||
+                          time < edit.start ||
+                          time >= edit.end
+                        }
+                        onClick={() => chooseCoverFrame(time)}
+                        title={
+                          !edit || time < edit.start || time >= edit.end
+                            ? "Move the playhead inside the current clip first"
+                            : "Save the frame at the current playhead"
+                        }
+                      >
+                        {coverBusy ? (
+                          <LoaderCircle className="spin" size={14} />
+                        ) : (
+                          <Frame size={14} />
+                        )}{" "}
+                        Use current frame
+                      </button>
+                      <button
+                        type="button"
+                        className="text-link"
+                        disabled={coverBusy}
+                        onClick={generateCoverFrames}
+                      >
+                        Generate 6 frames
+                      </button>
+                    </div>
+                    {coverFrame && (
+                      <button
+                        type="button"
+                        className="text-link"
+                        disabled={coverBusy}
+                        onClick={clearCoverFrame}
+                      >
+                        Clear selection
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {coverOutsideClip && (
+                  <p className="inline-error">
+                    This cover is outside the current cut and will be ignored.
+                    Choose a frame from the clip range.
+                  </p>
+                )}
+                {coverCandidates.length > 0 && (
+                  <div className="cover-frame-strip">
+                    {coverCandidates.map((candidate) => (
+                      <button
+                        key={`${candidate.url}-${candidate.time}`}
+                        type="button"
+                        className={
+                          "cover-frame-option " +
+                          (coverFrame &&
+                          Math.abs(coverFrame.time - candidate.time) < 0.002
+                            ? "selected"
+                            : "")
+                        }
+                        disabled={coverBusy}
+                        onClick={() => chooseCoverFrame(candidate.time)}
+                        title={`Use the frame at ${timecode(candidate.time)}`}
+                      >
+                        <img
+                          src={candidate.url}
+                          alt={`Cover candidate at ${timecode(candidate.time)}`}
+                        />
+                        <span>{timecode(candidate.time)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="source-info">
                   <span className="eyebrow">SOURCE VIDEO</span>
                   <p>
@@ -1876,8 +2051,8 @@ export default function Editor({
                 )}
                 {autoSubtitleTooLong && (
                   <p className="inline-error">
-                    This video is {clock(duration)} long. Automatic subtitles are
-                    limited to {autoSubtitleLimitMinutes} minutes; raise the
+                    This video is {clock(duration)} long. Automatic subtitles
+                    are limited to {autoSubtitleLimitMinutes} minutes; raise the
                     limit in Settings → Auto subtitles or import a shorter
                     video.
                   </p>

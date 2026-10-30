@@ -85,9 +85,11 @@ export default function TelegramCover({
           <span className="badge">
             {preparing
               ? "Preparing cover…"
-              : cover?.mode === "manual"
-                ? "Selected frame"
-                : "Automatic frame"}
+              : cover?.origin === "prerender"
+                ? "Saved before captions"
+                : cover?.mode === "manual"
+                  ? "Selected frame"
+                  : "Automatic frame"}
             {cover && !preparing ? ` · ${cover.time.toFixed(2)}s` : ""}
           </span>
           <label>
@@ -127,8 +129,9 @@ export default function TelegramCover({
       </div>
       <p className="hint">
         Every clip gets a cover automatically. Pause or seek the video above,
-        then use its current frame to choose your own. The cover includes your
-        finished edits.
+        then use its current frame to choose your own. A cover saved in the
+        editor before rendering stays free of burned-in subtitles; choosing a
+        frame here reads it from the finished MP4.
       </p>
     </section>
   );

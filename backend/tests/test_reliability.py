@@ -15,7 +15,7 @@ from app.network import PublicResolver
 from app.telegram import Telegram
 from app.workers import download
 from fastapi.testclient import TestClient
-from telethon import errors, types, functions
+from telethon import types, functions
 
 
 def test_dns_rebinding_rejected(monkeypatch):
@@ -108,11 +108,20 @@ def test_restart_recovers_queue_honestly():
     s.execute("DELETE FROM jobs WHERE id IN (?,?)", (running, queued))
 
 
-def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
+def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
     from app import telegram as module
 
     calls = []
     sent_media = []
+    channel = types.Channel(
+        id=1234567890,
+        access_hash=987654321,
+        title="Test channel",
+        username="testchannel",
+        broadcast=True,
+        photo=types.ChatPhotoEmpty(),
+        date=datetime.now(timezone.utc),
+    )
 
     class Client:
         def __init__(self, *args, **kwargs):
@@ -132,20 +141,27 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
         async def is_user_authorized(self):
             return self.authorized
 
-        async def send_code_request(self, phone):
-            calls.append("request-code")
-            return SimpleNamespace(phone_code_hash="ephemeral-code-hash")
-
         async def sign_in(self, **kwargs):
-            if "password" not in kwargs:
-                raise errors.SessionPasswordNeededError(None)
+            assert kwargs == {"bot_token": "123456:bot-token-that-is-long-enough-123"}
             self.authorized = True
-            calls.append("sign-in")
+            calls.append("bot-sign-in")
 
         async def get_me(self):
             return SimpleNamespace(
-                first_name="Test", last_name="Account", username="test", premium=False
+                first_name="Test", last_name="Bot", username="test_bot", premium=False
             )
+
+        async def get_entity(self, value):
+            if isinstance(value, types.InputPeerChannel):
+                assert value.channel_id == channel.id
+                assert value.access_hash == channel.access_hash
+            else:
+                assert value == "@testchannel"
+            return channel
+
+        async def get_permissions(self, entity, user):
+            assert entity is channel and user == "me"
+            return SimpleNamespace(is_admin=True, post_messages=True)
 
         async def get_input_entity(self, dest):
             return dest
@@ -195,8 +211,9 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
         {
             "api_id": 123,
             "api_hash": "a" * 32,
-            "phone": "+15551234567",
-            "destination": "me",
+            "bot_token": "123456:bot-token-that-is-long-enough-123",
+            "channels": [],
+            "default_channel": "",
         },
     )
     tg = Telegram()
@@ -236,14 +253,17 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
     )
 
     async def scenario():
-        assert (await tg.connect())["step"] == "code"
-        assert (await tg.verify(code="12345"))["step"] == "password"
-        assert (await tg.verify(password="never-persist-this"))["connected"]
-        assert not any(isinstance(c, tuple) for c in calls)
+        status = await tg.status()
+        assert status["connected"] and status["username"] == "test_bot"
+        assert calls == ["bot-sign-in"]
+        added = await tg.add_channel("@testchannel")
+        assert added["id"] == str(channel.id) and not added["error"]
+        assert (await tg.verify_channel(added["id"]))["name"] == "Test channel"
+        assert [c["id"] for c in await tg.list_channels()] == [str(channel.id)]
         payload = {
             "clip_id": clip_id,
-            "destination": "me",
-            "caption": "Literal <caption>",
+            "destination": added["id"],
+            "caption": "<b>Formatted</b> caption",
             "as_file": False,
         }
         ident = s.job("telegram", "test-project", payload)
@@ -264,7 +284,7 @@ def test_telegram_login_and_explicit_upload(monkeypatch, tmp_path):
             video.supports_streaming and video.nosound and video.video_codec == "h264"
         )
         assert video.w == 320 and video.h == 180 and video.duration == 1
-        assert options["parse_mode"] is None
+        assert options["parse_mode"] == "html"
         assert (
             s.one("SELECT progress FROM jobs WHERE id=?", (ident,))["progress"] == 100
         )

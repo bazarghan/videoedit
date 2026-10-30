@@ -1074,6 +1074,59 @@ label.check {
 .send-panel p {
   font-size: 12px;
 }
+.caption-field {
+  margin: 16px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #b7bfcd;
+}
+.caption-field-label {
+  display: block;
+}
+.caption-box {
+  margin-top: 8px;
+  background: #131720;
+  border: 1px solid #353c4b;
+  border-radius: 7px;
+  overflow: hidden;
+}
+.caption-preview {
+  --tg-primary: #c3f26a;
+  min-height: 58px;
+  padding: 11px 12px;
+  color: #e6e9ee;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.caption-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: #171b24;
+}
+.caption-count {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.caption-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.caption-actions .secondary {
+  padding: 8px 10px;
+  font-size: 11px;
+}
+.caption-hint {
+  margin-top: 8px !important;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -1276,6 +1329,9 @@ label.check {
   .settings-nav-badge {
     display: none;
   }
+  .channel-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .panel {
   background: var(--panel);
@@ -1335,6 +1391,82 @@ label.check {
 .connected-card .secondary {
   padding: 8px;
   font-size: 10px;
+}
+.settings-stack {
+  display: grid;
+  gap: 20px;
+}
+.channel-list {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 20px;
+}
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  background: #171c24;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.channel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 33px;
+  height: 33px;
+  border-radius: 8px;
+  background: #242a34;
+  color: var(--accent);
+}
+.channel-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.channel-copy strong {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channel-copy small {
+  font-size: 10px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.channel-copy .channel-ok,
+.channel-copy .channel-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+}
+.channel-copy .channel-ok {
+  color: var(--accent);
+}
+.channel-copy .channel-error {
+  color: #f08a8a;
+}
+.channel-copy .channel-ok svg,
+.channel-copy .channel-error svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.channel-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+.channel-form label {
+  margin: 0;
+}
+.channel-form button {
+  white-space: nowrap;
 }
 .login-telegram {
   border-top: 1px solid var(--line);
@@ -1848,6 +1980,102 @@ label.check {
 }
 .source-info small {
   font-size: 9px;
+}
+.cover-frame-picker {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  margin: 12px 0;
+}
+.cover-frame-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 92px;
+  height: 92px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #141922;
+}
+.cover-frame-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cover-frame-preview span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  color: #778398;
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: center;
+}
+.cover-frame-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+.cover-frame-copy strong {
+  color: #e6e9ee;
+  font-size: 11px;
+  font-weight: 500;
+}
+.cover-frame-copy small {
+  color: #778398;
+  font-size: 9px;
+}
+.cover-frame-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+}
+.cover-frame-buttons .secondary {
+  padding: 7px 9px;
+  font-size: 10px;
+}
+.cover-frame-copy .text-link {
+  font-size: 10px;
+  text-align: left;
+}
+.cover-frame-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+.cover-frame-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #141922;
+  color: #778398;
+  font-size: 8px;
+}
+.cover-frame-option img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+.cover-frame-option.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cover-frame-option:disabled {
+  opacity: 0.6;
 }
 .slider-label > span {
   display: flex;

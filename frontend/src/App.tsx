@@ -20,6 +20,7 @@ import {
   ChevronRight,
   HardDrive,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 import {
   api,
@@ -37,6 +38,7 @@ import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
 import TelegramCover from "./TelegramCover";
+import { TelegramEditorModal, TelegramRichText } from "./telegram-editor";
 import { Checkbox } from "./components/ui/checkbox";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -85,12 +87,12 @@ export default function App() {
   const [useProxy, setUseProxy] = useState(false),
     [proxy, setProxy] = useState<DownloadProxyDraft>(emptyProxy),
     [proxyBusy, setProxyBusy] = useState(false);
-  const [dest, setDest] = useState("me"),
+  const [dest, setDest] = useState(""),
     [caption, setCaption] = useState(""),
-    [asFile, setAsFile] = useState(false),
-    [destinations, setDestinations] = useState<{ id: string; name: string }[]>(
-      [],
-    );
+    [captionFormat, setCaptionFormat] = useState("html"),
+    [captionOpen, setCaptionOpen] = useState(false),
+    [captionBusy, setCaptionBusy] = useState(false),
+    [asFile, setAsFile] = useState(false);
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
   const coverPending =
     !!openClip &&
@@ -239,17 +241,34 @@ export default function App() {
     };
     xhr.send(form);
   }
-  async function showClip(clip: Clip) {
+  async function autoCaption() {
+    if (!openClip) return;
+    setCaptionBusy(true);
+    try {
+      const result = await api<{ caption: string }>(
+        `/clips/${openClip.id}/caption`,
+        json("POST"),
+      );
+      setCaption(result.caption);
+      setCaptionOpen(true);
+      toast("Auto caption ready. Review it before posting.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCaptionBusy(false);
+    }
+  }
+  function showClip(clip: Clip) {
     setOpenClip(clip);
     setCaption("");
+    setCaptionOpen(false);
+    setCaptionBusy(false);
     setAsFile(false);
-    setDest(settings?.telegram.destination || "me");
-    if (settings?.telegram_status.connected)
-      try {
-        setDestinations(await api("/telegram/destinations"));
-      } catch (e) {
-        setError((e as Error).message);
-      }
+    setDest(
+      settings?.telegram.default_channel ||
+        settings?.telegram.channels[0]?.id ||
+        "",
+    );
   }
   if (authenticated === null)
     return (
@@ -900,11 +919,11 @@ export default function App() {
             />
             <div className="send-panel">
               <h3>
-                <Send size={17} /> Send to Telegram
+                <Send size={17} /> Post to Telegram
               </h3>
               {!settings?.telegram_status.connected ? (
                 <p>
-                  Connect your account in{" "}
+                  Connect your Telegram bot in{" "}
                   <button
                     className="text-link"
                     onClick={() => {
@@ -914,7 +933,21 @@ export default function App() {
                   >
                     Settings
                   </button>{" "}
-                  to send clips.
+                  to post clips.
+                </p>
+              ) : !settings.telegram.channels.length ? (
+                <p>
+                  Add a channel in{" "}
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setOpenClip(null);
+                      setPage("settings");
+                    }}
+                  >
+                    Settings
+                  </button>{" "}
+                  and verify the bot is an administrator there.
                 </p>
               ) : (
                 <form
@@ -925,48 +958,92 @@ export default function App() {
                         api(
                           `/clips/${openClip.id}/send`,
                           json("POST", {
-                            destination: dest,
+                            destination:
+                              dest || settings.telegram.channels[0].id,
                             caption,
                             as_file: asFile,
                           }),
                         ),
-                      "Telegram upload queued. Track it in Activity.",
+                      "Telegram post queued. Track it in Activity.",
                     );
                   }}
                 >
                   <label>
-                    Destination
+                    Channel
                     <Select
-                      value={dest || "me"}
+                      value={dest || settings.telegram.channels[0].id}
                       onValueChange={(value) => setDest(value)}
                     >
                       <SelectTrigger
                         className="h-9 text-xs"
-                        aria-label="Destination"
+                        aria-label="Channel"
                       >
-                        <SelectValue placeholder="Choose a destination" />
+                        <SelectValue placeholder="Choose a channel" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(destinations.length
-                          ? destinations
-                          : [{ id: "me", name: "Saved Messages" }]
-                        ).map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
+                        {settings.telegram.channels.map((channel) => (
+                          <SelectItem key={channel.id} value={channel.id}>
+                            {channel.name}
+                            {channel.username ? ` (@${channel.username})` : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </label>
-                  <label>
-                    Caption
-                    <Textarea
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      maxLength={1024}
-                      placeholder="Add a caption…"
-                    />
-                  </label>
+                  <div className="caption-field">
+                    <span className="caption-field-label">Caption</span>
+                    <div className="caption-box">
+                      <div className="caption-preview">
+                        {caption ? (
+                          <TelegramRichText text={caption} />
+                        ) : (
+                          <span className="muted">
+                            No caption yet. Add formatted text, links, or emoji.
+                          </span>
+                        )}
+                      </div>
+                      <div className="caption-actions">
+                        <span className="caption-count">
+                          {caption.length} / 1024
+                        </span>
+                        <div className="caption-buttons">
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={
+                              captionBusy || !settings?.ai.api_key_saved
+                            }
+                            onClick={autoCaption}
+                            title={
+                              !settings?.ai.api_key_saved
+                                ? "Add your 9Router API token in Settings first"
+                                : "Write a caption from this clip's subtitles using the prompt in Settings"
+                            }
+                          >
+                            {captionBusy ? (
+                              <LoaderCircle className="spin" size={15} />
+                            ) : (
+                              <Sparkles size={15} />
+                            )}{" "}
+                            {captionBusy ? "Writing…" : "Auto caption"}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setCaptionOpen(true)}
+                          >
+                            <Pencil size={15} />{" "}
+                            {caption ? "Edit caption" : "Write caption"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="hint caption-hint">
+                      Auto caption uses the clip's English and Persian subtitles
+                      plus the system prompt in Settings → Auto subtitles &
+                      captions.
+                    </p>
+                  </div>
                   <Label className="check">
                     <Checkbox
                       checked={asFile}
@@ -974,12 +1051,32 @@ export default function App() {
                     />
                     <span>Send as a file instead of a playable video</span>
                   </Label>
+                  <p className="hint">
+                    Videos upload over MTProto through your bot, up to 2 GB.
+                  </p>
                   <button className="primary" disabled={coverPending}>
-                    <Send size={16} /> Send now
+                    <Send size={16} /> Post now
                   </button>
                 </form>
               )}
             </div>
+            <TelegramEditorModal
+              open={captionOpen}
+              onClose={() => setCaptionOpen(false)}
+              value={caption}
+              onChange={setCaption}
+              format={captionFormat}
+              onFormatChange={setCaptionFormat}
+              maxLength={1024}
+              richEnabled={false}
+              defaultShowPreview
+              title="Post caption"
+              label="Caption for your Telegram channel post"
+              placeholder="Write a caption…"
+              previewTitle={
+                settings?.telegram_status.name || "Telegram channel"
+              }
+            />
           </section>
         </div>
       )}

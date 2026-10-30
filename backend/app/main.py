@@ -3,6 +3,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import time
@@ -15,13 +16,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pwdlib import PasswordHash
 
+from . import caption as captions
 from . import media
 from . import store as s
 from .autosubtitle import max_duration_minutes
 from .font_catalog import FONT_SLUGS, font_path
 from .models import (
+    DEFAULT_CAPTION_PROMPT,
     AIConfig,
     AutoSubtitleRequest,
+    CoverFrameCandidates,
+    CoverFrameSelection,
     CoverSelection,
     Cue,
     DownloadProxyConfig,
@@ -34,7 +39,7 @@ from .models import (
     Rename,
     SendClip,
     StorageConfig,
-    TelegramCode,
+    TelegramChannel,
     TelegramConfig,
 )
 from .network import validate_url
@@ -756,6 +761,30 @@ async def clips():
     ]
 
 
+@app.get("/api/media/project/{ident}/cover-frame")
+async def project_cover_frame(ident: str):
+    row = project(ident)
+    frame = json.loads(row["metadata"]).get("cover_frame") or {}
+    revision = frame.get("revision", "")
+    if not re.fullmatch(r"[0-9a-f]{32}", revision):
+        raise HTTPException(404, "No Telegram cover frame is selected.")
+    path = s.DATA / "renders" / f"{ident}-cover-frame-{revision}.jpg"
+    if not path.exists():
+        raise HTTPException(404, "The selected cover frame is no longer available.")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@app.get("/api/media/project/{ident}/frame/{name}")
+async def project_frame(ident: str, name: str):
+    project(ident)
+    if not re.fullmatch(r"[0-9a-f]{32}-\d{1,2}", name):
+        raise HTTPException(404, "Cover frame not found.")
+    path = s.DATA / "renders" / f"{ident}-frame-{name}.jpg"
+    if not path.exists():
+        raise HTTPException(404, "This cover frame is no longer available.")
+    return FileResponse(path, media_type="image/jpeg")
+
+
 @app.get("/api/media/project/{ident}/{kind}")
 async def project_media(ident: str, kind: str):
     row = project(ident)
@@ -816,6 +845,96 @@ async def select_cover(ident: str, body: CoverSelection):
     }
 
 
+def cover_frame_range(row, start=None, end=None, edit=None):
+    info = json.loads(row["metadata"])
+    edit = edit or Edit.model_validate(json.loads(row["edit"]))
+    begin = edit.start if start is None else start
+    finish = edit.end if end is None else end
+    if finish <= begin or finish > float(info.get("duration") or 0) + 0.05:
+        raise ValueError("Choose a cover range inside the original video.")
+    return edit, begin, finish
+
+
+@app.post("/api/projects/{ident}/cover-frames")
+async def project_cover_frames(ident: str, body: CoverFrameCandidates):
+    row = project(ident)
+    edit, begin, finish = cover_frame_range(row, body.start, body.end, body.edit)
+    for old in (s.DATA / "renders").glob(f"{ident}-frame-*.jpg"):
+        old.unlink(missing_ok=True)
+    token = s.uid()
+    frames = []
+    for index in range(body.count):
+        timestamp = begin + (finish - begin) * (index + 1) / (body.count + 1)
+        name = f"{token}-{index}"
+        path = s.DATA / "renders" / f"{ident}-frame-{name}.jpg"
+        await media.make_project_frame(
+            row, edit, timestamp, path, max_edge=480, quality=5
+        )
+        frames.append(
+            {
+                "time": round(timestamp, 3),
+                "url": f"/api/media/project/{ident}/frame/{name}",
+            }
+        )
+    return {
+        "frames": frames,
+        "cover_frame": json.loads(row["metadata"]).get("cover_frame"),
+    }
+
+
+@app.put("/api/projects/{ident}/cover-frame")
+async def select_project_cover_frame(ident: str, body: CoverFrameSelection):
+    row = project(ident)
+    edit, begin, finish = cover_frame_range(row, body.start, body.end, body.edit)
+    info = json.loads(row["metadata"])
+    previous = info.get("cover_frame") or {}
+    if body.time is None:
+        info.pop("cover_frame", None)
+        s.execute(
+            "UPDATE projects SET metadata=? WHERE id=?", (json.dumps(info), ident)
+        )
+        old = previous.get("revision", "")
+        if re.fullmatch(r"[0-9a-f]{32}", old):
+            (s.DATA / "renders" / f"{ident}-cover-frame-{old}.jpg").unlink(
+                missing_ok=True
+            )
+        return {"cover_frame": None}
+    if not begin <= body.time < finish:
+        raise ValueError("Choose a cover frame inside the current clip.")
+    revision = s.uid()
+    path = s.DATA / "renders" / f"{ident}-cover-frame-{revision}.jpg"
+    await media.make_project_frame(
+        row, edit, body.time, path, max_edge=1280, quality=6
+    )
+    info["cover_frame"] = {
+        "time": round(body.time, 3),
+        "revision": revision,
+    }
+    s.execute("UPDATE projects SET metadata=? WHERE id=?", (json.dumps(info), ident))
+    old = previous.get("revision", "")
+    if re.fullmatch(r"[0-9a-f]{32}", old):
+        (s.DATA / "renders" / f"{ident}-cover-frame-{old}.jpg").unlink(
+            missing_ok=True
+        )
+    return {
+        "cover_frame": info["cover_frame"],
+        "url": f"/api/media/project/{ident}/cover-frame",
+    }
+
+
+@app.post("/api/clips/{ident}/caption")
+async def caption_clip(ident: str):
+    row = s.one("SELECT * FROM clips WHERE id=?", (ident,))
+    if not row:
+        raise HTTPException(404, "Clip not found.")
+    project_row = project(row["project_id"])
+    config = s.setting("ai", {})
+    if not (config.get("api_key") or "").strip():
+        raise ValueError("Add your 9Router API token in Settings first.")
+    text = await captions.generate_caption(project_row, row, config)
+    return {"caption": text}
+
+
 @app.post("/api/clips/{ident}/send")
 async def send_clip(ident: str, body: SendClip):
     row = s.one("SELECT * FROM clips WHERE id=?", (ident,))
@@ -828,12 +947,18 @@ async def send_clip(ident: str, body: SendClip):
         raise HTTPException(
             409, "Wait for the cover to finish before sending this clip."
         )
-    status = await telegram.status()
-    if not status["connected"]:
-        raise ValueError("Connect your Telegram account in Settings first.")
+    await telegram.check()
+    channels = await telegram.list_channels()
+    if not channels:
+        raise ValueError("Add a Telegram channel in Settings before posting.")
+    destination = body.destination or channels[0]["id"]
+    if not any(channel["id"] == destination for channel in channels):
+        raise ValueError("Choose a configured Telegram channel.")
     return {
         "job_id": s.job(
-            "telegram", row["project_id"], {"clip_id": ident, **body.model_dump()}
+            "telegram",
+            row["project_id"],
+            {"clip_id": ident, **body.model_dump(), "destination": destination},
         )
     }
 
@@ -896,6 +1021,11 @@ async def delete_project(ident: str):
         for r in s.rows("SELECT ass_path FROM subtitles WHERE project_id=?", (ident,))
         if r["ass_path"]
     ]
+    paths += [
+        str(path)
+        for pattern in ("cover-frame-*", "frame-*")
+        for path in (s.DATA / "renders").glob(f"{ident}-{pattern}.jpg")
+    ]
     for path in paths:
         Path(path).unlink(missing_ok=True)
     for table in ("assets", "clips", "subtitles", "jobs"):
@@ -909,6 +1039,7 @@ def ai_settings():
     return {
         "base_url": config.get("base_url", "http://localhost:20128/v1"),
         "model": config.get("model", "kr/claude-sonnet-4.5"),
+        "caption_prompt": config.get("caption_prompt") or DEFAULT_CAPTION_PROMPT,
         "api_key_saved": bool(config.get("api_key")),
     }
 
@@ -929,8 +1060,9 @@ async def get_settings():
         "telegram": {
             "api_id": config.get("api_id", ""),
             "api_hash_saved": bool(config.get("api_hash")),
-            "phone": config.get("phone", ""),
-            "destination": config.get("destination", "me"),
+            "bot_token_saved": bool(config.get("bot_token")),
+            "default_channel": config.get("default_channel", ""),
+            "channels": await telegram.list_channels(),
         },
         "telegram_status": await telegram.status(),
         "storage": storage_info(),
@@ -961,12 +1093,16 @@ async def save_ai_settings(body: AIConfig):
         api_key = ""
     elif body.api_key.strip():
         api_key = body.api_key.strip()
+    caption_prompt = existing.get("caption_prompt") or DEFAULT_CAPTION_PROMPT
+    if "caption_prompt" in body.model_fields_set:
+        caption_prompt = body.caption_prompt.strip() or DEFAULT_CAPTION_PROMPT
     s.set_setting(
         "ai",
         {
             "api_key": api_key,
             "base_url": base_url,
             "model": body.model.strip() or "kr/claude-sonnet-4.5",
+            "caption_prompt": caption_prompt,
         },
     )
     return ai_settings()
@@ -1108,31 +1244,49 @@ async def cleanup(kind: str):
 
 @app.put("/api/settings/telegram")
 async def save_telegram(body: TelegramConfig):
-    existing = s.setting("telegram", {})
-    config = body.model_dump()
-    if not config["api_hash"]:
-        config["api_hash"] = existing.get("api_hash", "")
     import re
 
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", config["api_hash"]) or not re.fullmatch(
-        r"\+[0-9 ]{7,20}", config["phone"]
-    ):
+    existing = s.setting("telegram", {})
+    api_hash = body.api_hash.strip() or existing.get("api_hash", "")
+    bot_token = body.bot_token.strip() or existing.get("bot_token", "")
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", api_hash):
+        raise ValueError("Enter the 32-character API hash from my.telegram.org.")
+    if not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", bot_token):
         raise ValueError(
-            "Enter the 32-character API hash and a phone number with country code (+)."
+            "Enter a bot token from @BotFather, for example 123456:ABC-DEF…."
         )
+    config = {
+        **existing,
+        "api_id": body.api_id,
+        "api_hash": api_hash,
+        "bot_token": bot_token,
+    }
     changed = any(
-        config.get(k) != existing.get(k) for k in ("api_id", "api_hash", "phone")
+        config.get(key) != existing.get(key)
+        for key in ("api_id", "api_hash", "bot_token")
     )
+    if bot_token != existing.get("bot_token"):
+        # Channel access hashes belong to the previous bot and are not reusable.
+        config["channels"] = []
+        config["default_channel"] = ""
     if changed:
         if s.one(
             "SELECT id FROM jobs WHERE kind='telegram' AND status IN ('running','queued')"
         ):
             raise HTTPException(
-                409, "Wait for Telegram uploads to finish before changing the account."
+                409, "Wait for Telegram uploads to finish before changing the bot."
             )
-        await telegram.disconnect(logout=True)
+        await telegram.disconnect(logout=False)
+        s.set_setting("telegram_session", "")
+        s.set_setting("telegram_bot_session", False)
     s.set_setting("telegram", config)
-    return {"ok": True}
+    status = await telegram.status()
+    if changed and not status["connected"]:
+        raise ValueError(
+            status.get("error")
+            or "Telegram could not connect with these bot credentials."
+        )
+    return {"ok": True, "status": status}
 
 
 async def telegram_call(fn):
@@ -1142,19 +1296,24 @@ async def telegram_call(fn):
         raise HTTPException(400, error_message(exc))
 
 
-@app.post("/api/telegram/connect")
-async def telegram_connect():
-    return await telegram_call(telegram.connect)
+@app.get("/api/telegram/channels")
+async def telegram_channels():
+    return await telegram_call(telegram.list_channels)
 
 
-@app.post("/api/telegram/verify")
-async def telegram_verify(body: TelegramCode):
-    return await telegram_call(lambda: telegram.verify(body.code, body.password))
+@app.post("/api/telegram/channels")
+async def telegram_add_channel(body: TelegramChannel):
+    return await telegram_call(lambda: telegram.add_channel(body.channel))
 
 
-@app.get("/api/telegram/destinations")
-async def telegram_destinations():
-    return await telegram_call(telegram.dialogs)
+@app.post("/api/telegram/channels/{ident}/verify")
+async def telegram_verify_channel(ident: str):
+    return await telegram_call(lambda: telegram.verify_channel(ident))
+
+
+@app.delete("/api/telegram/channels/{ident}")
+async def telegram_remove_channel(ident: str):
+    return await telegram_call(lambda: telegram.remove_channel(ident))
 
 
 @app.post("/api/telegram/disconnect")
@@ -1166,7 +1325,7 @@ async def telegram_disconnect():
             409, "Finish or cancel Telegram uploads before disconnecting."
         )
     await telegram_call(telegram.disconnect)
-    return {"connected": False, "step": "connect"}
+    return {"connected": False, "configured": True}
 
 
 @app.get("/api/fonts/{font}")

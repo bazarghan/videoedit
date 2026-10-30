@@ -1,13 +1,13 @@
 # VideoEdit
 
-A private, self-hosted clip studio. Import a video, choose a moment, shape the frame, style the captions, and export a finished MP4. Send an export through your own Telegram account when you choose.
+A private, self-hosted clip studio. Import a video, choose a moment, shape the frame, style the captions, and export a finished MP4. Post an export through your own Telegram bot when you choose.
 
 Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. VideoEdit keeps the original source for final rendering. Imports try the original in your browser; if the browser cannot play its codecs or container, trimming, captions, and renders still use the original. Embedded text subtitles remain editable either way.
 
 ## Features
 
 - Direct HTTP/HTTPS downloads with complete signed URLs, optional SOCKS5 proxies, upload progress, cancellation, and actionable errors.
-- Telegram-ready MP4 exports with automatic video covers and manual frame selection from the finished clip.
+- Telegram-ready MP4 exports with automatic video covers, clean pre-render frame candidates, and manual frame selection from the finished clip.
 - Persistent projects and background jobs; one render at a time with three encoding threads.
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
 - Draggable trim handles, exact time fields, and cuts re-encoded for precision.
@@ -22,7 +22,8 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 - A built-in default watermark template with the centred **TELEGRAM: @hl_clips** mark, repeating for two seconds five times across the clip.
 - Original audio selection and volume, mute, background music, looping, and fades.
 - Six-second rendered previews and MP4 exports with H.264, AAC, and fast-start metadata.
-- Encrypted Telegram API credentials and authorized sessions, code/2FA sign-in, destinations, captions, playable-video/file sending, progress, and retry.
+- Telegram HTML caption editor with formatting, links, emoji, preview, and a 1,024-character limit, plus AI auto captions generated from the clip's English or Persian subtitles using a configurable 9Router system prompt.
+- Encrypted Telegram bot credentials and session, verified channels, playable-video/file posting up to 2 GB, progress, and retry.
 - Administrator authentication on every media, job, project, and settings endpoint; protected cookies and origin checks.
 - Storage limits, a disk-space reserve, and explicit cleanup that refuses to delete media used by active jobs.
 
@@ -91,17 +92,21 @@ Video hostnames are resolved and validated locally, then public IP addresses are
 
 ## Telegram
 
-Exports use H.264 video with `yuv420p` pixels, AAC audio when present, and fast-start MP4 packaging. Each render is checked for compatibility and gets a cover from the finished video, including captions, crop and watermark. Muted clips are sent as playable videos rather than animated GIFs.
+Exports use H.264 video with `yuv420p` pixels, AAC audio when present, and fast-start MP4 packaging. Each render is checked for compatibility. Muted clips are sent as playable videos rather than animated GIFs.
 
-Open a clip from **Rendered clips** or the editor's recent renders. Under **Telegram cover**, pause/scrub the video or enter **Preview frame (seconds)**, then click **Use current frame**. Choose **Automatic frame** to return to the default frame near the beginning. Cover changes do not require rendering the video again and apply to future sends. Existing exports receive automatic covers during startup. Wait for the cover job to finish before sending.
+Choose a Telegram cover before rendering under **Advanced → Clip → Telegram cover**. Scrub to a frame and click **Use current frame**, or generate six evenly spaced candidates from the current clip. The chosen source frame is cropped to the output frame and saved from the original video, so burned-in captions never appear in the cover. The next render attaches that frame to the exported clip. If no frame is selected, the post-render cover still includes captions, crop, and watermark.
+
+Open a rendered clip from **Rendered clips** or the editor's recent renders to make a last-minute cover change. Under **Telegram cover**, pause/scrub the video or enter **Preview frame (seconds)**, then click **Use current frame**. Choose **Automatic frame** to return to the default frame near the beginning. Cover changes do not require rendering the video again and apply to future sends. Existing exports receive automatic covers during startup. Wait for the cover job to finish before sending.
 
 Playable videos include both Telegram's dedicated video cover and a small JPEG thumbnail for client compatibility. **Send as a file** attaches the thumbnail and retains document behavior. A cover changes the video's poster, not its playback starting position. Telegram clients control how covers are displayed.
 
-Create an API application at [my.telegram.org](https://my.telegram.org/apps). In Settings, save your API ID, API hash, and phone number with country code, then click **Connect account**. Enter the code delivered by Telegram and the two-step verification password if requested.
+Create a bot with [@BotFather](https://t.me/BotFather) and an API application at [my.telegram.org](https://my.telegram.org/apps). In **Settings → Telegram**, save the API ID, API hash, and bot token. The bot authenticates automatically, so no phone number, login code, or personal account is used. The API ID and hash let the bot upload over MTProto, which raises the 20 MB Bot API limit to 2 GB.
 
-Login codes and 2FA passwords are never persisted. API credentials and the authorized StringSession are encrypted with the installation's persistent key. The saved API hash is never returned to the browser. Disconnect logs out the Telegram session. No message is sent during setup or testing.
+Add the bot to each target channel as an administrator with **Post messages** permission, then add the channel under **Channels** using its `@username`, `t.me` link, or numeric ID. The check confirms the bot is an administrator and can post; broken permissions are shown per channel and can be re-verified.
 
-Destinations include Saved Messages and up to 200 recent dialogs; Telegram validates the account's current send permissions. Set a default destination in Settings. Telegram rate limits and upload failures are shown in Activity. Review Telegram before retrying an interrupted send: it may already have completed.
+The bot token, API credentials, and cached bot session are encrypted with the installation's persistent key. Saved secrets are never returned to the browser. Posts are sent only from a rendered clip's **Post to Telegram** panel with a channel choice and video/file format. Telegram rate limits and upload failures are shown in Activity. Review Telegram before retrying an interrupted send: it may already have completed.
+
+The caption field uses the bundled Telegram HTML editor: bold, italic, underline, strike, spoiler, code, quotes, links, mentions, custom emoji, date/time, a live preview, and a 1,024-character counter. **Auto caption** sends the clip's English and Persian subtitle cues to the 9Router model using the system prompt saved in **Settings → Auto subtitles & captions**. The built-in prompt returns the title, release year, IMDb rating, and a Persian scene description; replace the prompt to control the exact caption format. The result opens in the caption editor for review before posting. Create auto subtitles or upload a subtitle track first if the clip has none.
 
 ## Operations
 
@@ -122,7 +127,7 @@ docker compose restart app
 sudo ./deploy/backup.sh
 ```
 
-Store backups securely outside the deployment volume. A backup contains account sessions and credentials. Preserve **both** `data/` and `.env`, especially `data/encryption.key`; losing the key makes encrypted settings, Telegram authorization, and queued job payloads unreadable. Restore only trusted backups.
+Store backups securely outside the deployment volume. A backup contains account sessions and credentials. Preserve **both** `data/` and `.env`, especially `data/encryption.key`; losing the key makes encrypted settings, the Telegram bot session, and queued job payloads unreadable. Restore only trusted backups.
 
 To move an installation, wait for jobs to finish, make a backup, clone the public repository on the new host, and restore `.env` and `data/` into the new checkout. Restore ownership to UID/GID `10001:10001`, update `PUBLIC_URL` and the HTTPS proxy/DNS as needed, and run `docker compose up -d --build --wait`. Keep only one instance active against a given data directory. TLS configuration and certificates are managed by your reverse proxy and should be backed up separately.
 

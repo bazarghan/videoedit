@@ -87,7 +87,20 @@ export type Metadata = {
   size: number;
   video_codec: string;
   telegram_compatible?: boolean;
-  cover?: { time: number; mode: "auto" | "manual"; revision: string };
+  cover?: {
+    time: number;
+    mode: "auto" | "manual";
+    revision: string;
+    origin?: "render" | "prerender";
+    source_time?: number;
+  };
+  cover_frame?: { time: number; revision: string };
+  caption_context?: {
+    start: number;
+    end: number;
+    track_id?: string;
+    fa_track_id?: string;
+  };
   audio: { index: number; codec: string; language: string; title: string }[];
   subtitles: unknown[];
 };
@@ -139,19 +152,27 @@ export type Clip = {
   preview: boolean;
   has_cover: boolean;
 };
+export type TelegramChannel = {
+  id: string;
+  name: string;
+  username: string;
+  verified: number;
+  error: string;
+};
 export type Settings = {
   project_defaults: ProjectDefaults;
   telegram: {
     api_id: number | string;
     api_hash_saved: boolean;
-    phone: string;
-    destination: string;
+    bot_token_saved: boolean;
+    default_channel: string;
+    channels: TelegramChannel[];
   };
   telegram_status: {
     connected: boolean;
+    configured?: boolean;
     name?: string;
     username?: string;
-    step?: string;
     error?: string;
   };
   storage: {
@@ -163,6 +184,7 @@ export type Settings = {
   ai: {
     base_url: string;
     model: string;
+    caption_prompt: string;
     api_key_saved: boolean;
   };
   elevenlabs: {

@@ -207,20 +207,30 @@ def cover_paths(clip):
     )
 
 
-async def make_cover(clip, info, timestamp=None, ident=None):
-    duration = min(info["duration"], info.get("video_duration") or info["duration"])
-    if timestamp is not None and not 0 <= timestamp < info["duration"]:
-        raise ValueError("Choose a cover frame inside the rendered clip.")
-    # Seek no later than the last decodable frame, including very short clips.
-    position = min(1, duration / 2) if timestamp is None else timestamp
-    position = min(position, max(0, duration - 1 / max(1, info.get("fps", 30))))
-    revision = s.uid()
-    result = {
-        "time": position,
-        "mode": "auto" if timestamp is None else "manual",
-        "revision": revision,
-    }
-    paths = cover_paths({**clip, "metadata": {**info, "cover": result}})
+def frame_filter(edit, info):
+    """Crop/pad a source frame exactly like the rendered output."""
+    w, h = dimensions(info, edit)
+    crop = edit.crop
+    if crop.mode == "fill":
+        vf = (
+            f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+            f"crop={w}:{h}:(iw-ow)*{crop.x}:(ih-oh)*{crop.y},setsar=1"
+        )
+    else:
+        vf = (
+            f"scale={w}:{h}:force_original_aspect_ratio=decrease:"
+            f"force_divisible_by=2,"
+            f"pad={w}:{h}:(ow-iw)*{crop.x}:(oh-ih)*{crop.y}:black,setsar=1"
+        )
+    return w, h, vf
+
+
+async def _write_cover_files(clip_id, revision, input_path, position, vf_prefix, ident):
+    paths = tuple(
+        s.DATA / "renders" / f"{clip_id}-{revision}-{kind}.jpg"
+        for kind in ("cover", "thumb")
+    )
+    prefix = f"{vf_prefix}," if vf_prefix else ""
     s.space_for(2 * 1024**2)
     try:
         for path, edge in zip(paths, (1280, 320)):
@@ -234,11 +244,11 @@ async def make_cover(clip, info, timestamp=None, ident=None):
                         "-ss",
                         str(position),
                         "-i",
-                        clip["path"],
+                        str(input_path),
                         "-frames:v",
                         "1",
                         "-vf",
-                        f"scale='min({edge},iw)':'min({edge},ih)':force_original_aspect_ratio=decrease,setsar=1",
+                        f"{prefix}scale='min({edge},iw)':'min({edge},ih)':force_original_aspect_ratio=decrease,setsar=1",
                         "-q:v",
                         str(quality),
                         "-threads",
@@ -257,10 +267,93 @@ async def make_cover(clip, info, timestamp=None, ident=None):
                 raise ValueError(
                     "The cover thumbnail could not be reduced to Telegram's supported size."
                 )
-        return result
+        return paths
     except BaseException:
         for path in paths:
             path.unlink(missing_ok=True)
+        raise
+
+
+async def make_cover(clip, info, timestamp=None, ident=None):
+    duration = min(info["duration"], info.get("video_duration") or info["duration"])
+    if timestamp is not None and not 0 <= timestamp < info["duration"]:
+        raise ValueError("Choose a cover frame inside the rendered clip.")
+    # Seek no later than the last decodable frame, including very short clips.
+    position = min(1, duration / 2) if timestamp is None else timestamp
+    position = min(position, max(0, duration - 1 / max(1, info.get("fps", 30))))
+    revision = s.uid()
+    result = {
+        "time": position,
+        "mode": "auto" if timestamp is None else "manual",
+        "origin": "render",
+        "revision": revision,
+    }
+    await _write_cover_files(clip["id"], revision, clip["path"], position, "", ident)
+    return result
+
+
+async def make_source_cover(clip_id, project, edit, timestamp, ident=None, duration=None):
+    """Save a clean cover from the source before captions are burned in."""
+    info = json.loads(project["metadata"])
+    end = edit.start + (
+        duration if duration is not None else max(0, edit.end - edit.start)
+    )
+    if timestamp is None or not edit.start <= timestamp < end:
+        raise ValueError("Choose a Telegram cover frame inside the current clip.")
+    _, _, vf = frame_filter(edit, info)
+    revision = s.uid()
+    await _write_cover_files(clip_id, revision, project["source"], timestamp, vf, ident)
+    return {
+        "time": round(max(0, timestamp - edit.start), 3),
+        "source_time": round(timestamp, 3),
+        "mode": "manual",
+        "origin": "prerender",
+        "revision": revision,
+    }
+
+
+async def make_project_frame(
+    project, edit, timestamp, dest, ident=None, max_edge=480, quality=5
+):
+    """Write a cropped JPEG from the source without subtitles or watermark."""
+    source = project.get("source")
+    if not source or not Path(source).exists():
+        raise ValueError("The original source is not available for cover frames.")
+    info = json.loads(project["metadata"])
+    if not 0 <= timestamp < float(info.get("duration") or 0):
+        raise ValueError("Choose a cover frame inside the current clip.")
+    _, _, vf = frame_filter(edit, info)
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    s.space_for(1024**2)
+    try:
+        await run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-ss",
+                str(timestamp),
+                "-i",
+                str(source),
+                "-frames:v",
+                "1",
+                "-vf",
+                f"{vf},scale='min({max_edge},iw)':'min({max_edge},ih)':force_original_aspect_ratio=decrease,setsar=1",
+                "-q:v",
+                str(quality),
+                "-threads",
+                "1",
+                str(dest),
+            ],
+            ident,
+        )
+        if not dest.exists() or not dest.stat().st_size:
+            raise ValueError("The selected frame could not be decoded.")
+        return dest
+    except BaseException:
+        dest.unlink(missing_ok=True)
         raise
 
 
@@ -839,11 +932,7 @@ async def render(project, payload, ident):
                 "to use the editable English and Persian tracks."
             )
         soft_sub_index = text_tracks[0]["index"]
-    crop = edit.crop
-    if crop.mode == "fill":
-        vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}:(iw-ow)*{crop.x}:(ih-oh)*{crop.y},setsar=1"
-    else:
-        vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad={w}:{h}:(ow-iw)*{crop.x}:(oh-ih)*{crop.y}:black,setsar=1"
+    _, _, vf = frame_filter(edit, meta)
     if (
         edit.subtitles.burn
         and not edit.subtitles.soft
@@ -959,9 +1048,32 @@ async def render(project, payload, ident):
                 "The export could not be verified as a Telegram-compatible MP4. Render it again."
             )
         info["telegram_compatible"] = True
+        info["caption_context"] = {
+            "start": edit.start,
+            "end": edit.start + duration,
+            "track_id": edit.subtitles.track_id,
+            "fa_track_id": edit.subtitles.fa_track_id,
+        }
         if payload.get("signature"):
             info["render_signature"] = payload["signature"]
-        info["cover"] = await make_cover(
+        selected = (meta.get("cover_frame") or {}).get("time")
+        cover = None
+        if selected is not None:
+            try:
+                cover = await make_source_cover(
+                    clip_id,
+                    project,
+                    edit,
+                    float(selected),
+                    ident=ident,
+                    duration=duration,
+                )
+            except Cancelled:
+                raise
+            except Exception:
+                # A stale selection must not block an otherwise valid render.
+                cover = None
+        info["cover"] = cover or await make_cover(
             {"id": clip_id, "path": str(dest)}, info, ident=ident
         )
         name = re.sub(r"[^\w\- .]", "", edit.filename).strip(" .") or "clip"

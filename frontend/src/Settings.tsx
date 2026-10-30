@@ -6,23 +6,21 @@ import {
   LoaderCircle,
   Trash2,
   Check,
-  KeyRound,
   Sparkles,
   Mic,
   Languages,
   SlidersHorizontal,
   ChevronRight,
+  Bot,
+  Radio,
+  Plus,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { api, json, size, Settings } from "./types";
 import ProjectDefaultsPanel from "./ProjectDefaults";
 import { Input } from "./components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./components/ui/select";
+import { Textarea } from "./components/ui/textarea";
 type Props = {
   onSettings: (s: Settings) => void;
   onError: (s: string) => void;
@@ -32,38 +30,29 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null),
     [apiId, setApiId] = useState(""),
     [hash, setHash] = useState(""),
-    [phone, setPhone] = useState(""),
-    [destination, setDestination] = useState("me"),
+    [botToken, setBotToken] = useState(""),
+    [channel, setChannel] = useState(""),
     [limit, setLimit] = useState(20),
     [aiBase, setAiBase] = useState("http://localhost:20128/v1"),
     [aiModel, setAiModel] = useState("kr/claude-sonnet-4.5"),
+    [aiPrompt, setAiPrompt] = useState(""),
     [aiKey, setAiKey] = useState(""),
     [elevenModel, setElevenModel] = useState("scribe_v2"),
     [elevenMax, setElevenMax] = useState(6),
     [elevenKey, setElevenKey] = useState(""),
     [section, setSection] = useState("defaults"),
-    [step, setStep] = useState("connect"),
-    [code, setCode] = useState(""),
-    [password, setPassword] = useState(""),
-    [busy, setBusy] = useState(false),
-    [destinations, setDestinations] = useState<{ id: string; name: string }[]>(
-      [],
-    );
+    [busy, setBusy] = useState(false);
   async function load() {
     const s = await api<Settings>("/settings");
     setSettings(s);
     onSettings(s);
     setApiId(String(s.telegram.api_id));
-    setPhone(s.telegram.phone);
-    setDestination(s.telegram.destination);
     setLimit(s.storage.limit_gb);
     setAiBase(s.ai.base_url);
     setAiModel(s.ai.model);
+    setAiPrompt(s.ai.caption_prompt || "");
     setElevenModel(s.elevenlabs.model);
     setElevenMax(s.elevenlabs.max_duration_minutes);
-    setStep(s.telegram_status.step || "connect");
-    if (s.telegram_status.connected)
-      setDestinations(await api("/telegram/destinations"));
   }
   useEffect(() => {
     load().catch((e) => onError(e.message));
@@ -95,7 +84,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     {
       id: "subtitles",
       label: "Auto subtitles",
-      description: "ElevenLabs and 9Router",
+      description: "Subtitles, captions, 9Router",
       icon: Sparkles,
       badge:
         settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
@@ -105,9 +94,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     {
       id: "telegram",
       label: "Telegram",
-      description: "Account and delivery",
+      description: "Bot, channels and posting",
       icon: Send,
-      badge: connected ? "Connected" : "",
+      badge: connected
+        ? settings.telegram.channels.length
+          ? `${settings.telegram.channels.length} channels`
+          : "Connected"
+        : "",
     },
     {
       id: "storage",
@@ -177,8 +170,11 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   <Sparkles size={22} />
                 </div>
                 <div>
-                  <h2>Auto subtitles</h2>
-                  <p>ElevenLabs transcribes; 9Router translates to Persian.</p>
+                  <h2>Auto subtitles & captions</h2>
+                  <p>
+                    ElevenLabs transcribes; 9Router translates and writes
+                    Telegram captions.
+                  </p>
                 </div>
                 <span
                   className={
@@ -213,12 +209,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                         api_key: aiKey,
                         base_url: aiBase,
                         model: aiModel,
+                        caption_prompt: aiPrompt,
                       }),
                     );
                     setAiKey("");
                     setElevenKey("");
                     await load();
-                    toast("Auto subtitle settings saved.");
+                    toast("Auto subtitle and caption settings saved.");
                   });
                 }}
               >
@@ -311,6 +308,28 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     required
                   />
                 </label>
+                <div className="control-divider" />
+                <div className="section-heading">
+                  <h3>
+                    <Send size={14} /> Telegram captions
+                  </h3>
+                  <span>Auto caption format</span>
+                </div>
+                <label>
+                  Caption system prompt
+                  <Textarea
+                    className="min-h-56 text-xs leading-relaxed"
+                    rows={12}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="Describe the exact caption format the AI should return…"
+                  />
+                </label>
+                <p className="hint">
+                  Auto caption sends this clip's English and Persian subtitles
+                  to your 9Router model together with this system prompt. Clear
+                  the field to restore the built-in Persian caption format.
+                </p>
                 <p className="hint">
                   Both tokens are encrypted at rest and never returned to the
                   browser. The 9Router endpoint must be OpenAI-compatible (
@@ -323,247 +342,269 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   ) : (
                     <Check size={16} />
                   )}{" "}
-                  Save auto subtitle settings
+                  Save AI settings
                 </button>
               </form>
             </section>
           </div>
           <div hidden={section !== "telegram"}>
-            <section className="panel">
-              <div className="panel-heading">
-                <div className="panel-icon">
-                  <Send size={22} />
-                </div>
-                <div>
-                  <h2>Telegram</h2>
-                  <p>Send finished clips from your own account.</p>
-                </div>
-                <span className={"badge " + (connected ? "success" : "")}>
-                  {connected ? "Connected" : "Not connected"}
-                </span>
-              </div>
-              {connected && (
-                <div className="connected-card">
-                  <ShieldCheck size={20} />
-                  <div>
-                    <strong>{settings.telegram_status.name}</strong>
-                    <small>
-                      {settings.telegram_status.username
-                        ? "@" + settings.telegram_status.username
-                        : "Account connected securely"}
-                    </small>
+            <div className="settings-stack">
+              <section className="panel">
+                <div className="panel-heading">
+                  <div className="panel-icon">
+                    <Bot size={22} />
                   </div>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        await api("/telegram/disconnect", json("POST"));
-                        await load();
-                        toast("Telegram account disconnected.");
-                      })
-                    }
-                  >
-                    Disconnect & log out
-                  </button>
+                  <div>
+                    <h2>Telegram bot</h2>
+                    <p>Post clips through your bot, not your account.</p>
+                  </div>
+                  <span className={"badge " + (connected ? "success" : "")}>
+                    {connected ? "Online" : "Needs setup"}
+                  </span>
                 </div>
-              )}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  run(async () => {
-                    await api(
-                      "/settings/telegram",
-                      json("PUT", {
-                        api_id: Number(apiId),
-                        api_hash: hash,
-                        phone,
-                        destination,
-                      }),
-                    );
-                    setHash("");
-                    await load();
-                    toast("Telegram settings saved.");
-                  });
-                }}
-              >
-                <div className="form-row">
+                {connected && (
+                  <div className="connected-card">
+                    <ShieldCheck size={20} />
+                    <div>
+                      <strong>{settings.telegram_status.name}</strong>
+                      <small>
+                        {settings.telegram_status.username
+                          ? "@" + settings.telegram_status.username
+                          : "Bot credentials verified"}
+                      </small>
+                    </div>
+                    <span className="badge success">Connected</span>
+                  </div>
+                )}
+                {!connected && settings.telegram_status.error && (
+                  <p role="alert" className="inline-error">
+                    {settings.telegram_status.error}
+                  </p>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    run(async () => {
+                      let saved = false;
+                      try {
+                        await api(
+                          "/settings/telegram",
+                          json("PUT", {
+                            api_id: Number(apiId),
+                            api_hash: hash,
+                            bot_token: botToken,
+                          }),
+                        );
+                        saved = true;
+                      } finally {
+                        setHash("");
+                        setBotToken("");
+                        await load();
+                      }
+                      if (saved) toast("Telegram bot settings saved.");
+                    });
+                  }}
+                >
+                  <div className="form-row">
+                    <label>
+                      API ID
+                      <Input
+                        inputMode="numeric"
+                        type="number"
+                        value={apiId}
+                        onChange={(e) => setApiId(e.target.value)}
+                        required
+                        min={1}
+                      />
+                    </label>
+                    <label>
+                      API hash
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={hash}
+                        onChange={(e) => setHash(e.target.value)}
+                        placeholder={
+                          settings.telegram.api_hash_saved
+                            ? "Saved securely — leave blank to keep"
+                            : "32-character API hash"
+                        }
+                        required={!settings.telegram.api_hash_saved}
+                      />
+                    </label>
+                  </div>
                   <label>
-                    API ID
-                    <Input
-                      inputMode="numeric"
-                      type="number"
-                      value={apiId}
-                      onChange={(e) => setApiId(e.target.value)}
-                      required
-                      min={1}
-                    />
-                  </label>
-                  <label>
-                    API hash
+                    Bot token
                     <Input
                       type="password"
                       autoComplete="new-password"
-                      value={hash}
-                      onChange={(e) => setHash(e.target.value)}
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
                       placeholder={
-                        settings.telegram.api_hash_saved
+                        settings.telegram.bot_token_saved
                           ? "Saved securely — leave blank to keep"
-                          : "32-character API hash"
+                          : "123456:ABC-DEF… from @BotFather"
                       }
-                      required={!settings.telegram.api_hash_saved}
+                      required={!settings.telegram.bot_token_saved}
                     />
                   </label>
+                  <p className="hint">
+                    Create a bot with{" "}
+                    <a
+                      href="https://t.me/BotFather"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      @BotFather
+                    </a>{" "}
+                    and an API application at{" "}
+                    <a
+                      href="https://my.telegram.org/apps"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      my.telegram.org
+                    </a>
+                    . The API ID and hash unlock MTProto uploads, so clips
+                    larger than the 20 MB Bot API limit can be posted.
+                  </p>
+                  <button className="secondary" disabled={busy}>
+                    {busy ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : (
+                      <Bot size={16} />
+                    )}{" "}
+                    Save bot settings
+                  </button>
+                </form>
+                <div className="note">
+                  <Check size={16} />
+                  <span>
+                    The bot token and API credentials are encrypted at rest. No
+                    personal Telegram account is signed in or stored.
+                  </span>
                 </div>
-                <label>
-                  Phone number
-                  <Input
-                    type="tel"
-                    placeholder="+1 555 123 4567"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                  />
-                </label>
-                <p className="hint">
-                  Create an API application at{" "}
-                  <a
-                    href="https://my.telegram.org/apps"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    my.telegram.org
-                  </a>
-                  . Your API hash and authorized session are encrypted in
-                  persistent storage.
-                </p>
-                {connected && (
-                  <label>
-                    Default destination
-                    <Select
-                      value={destination || "me"}
-                      onValueChange={(value) => setDestination(value)}
-                    >
-                      <SelectTrigger
-                        className="h-9 text-xs"
-                        aria-label="Default destination"
-                      >
-                        <SelectValue placeholder="Choose a destination" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {destinations.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </label>
-                )}
-                <button className="secondary" disabled={busy}>
-                  Save Telegram settings
-                </button>
-              </form>
-              {!connected && (
-                <div className="login-telegram">
-                  {step === "connect" ? (
-                    <>
-                      <p>
-                        After saving your settings, request a login code to
-                        connect.
-                      </p>
-                      <button
-                        className="primary"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            const r = await api(
-                              "/telegram/connect",
-                              json("POST"),
-                            );
-                            setStep(r.step || "connect");
-                            if (r.connected) await load();
-                            toast("Check Telegram for your login code.");
-                          })
-                        }
-                      >
-                        {busy ? (
-                          <LoaderCircle className="spin" size={17} />
-                        ) : (
-                          <Send size={17} />
-                        )}{" "}
-                        Connect account
-                      </button>
-                    </>
-                  ) : (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        run(async () => {
-                          const r = await api(
-                            "/telegram/verify",
-                            json("POST", { code, password }),
-                          );
-                          setPassword("");
-                          setCode("");
-                          if (r.connected) {
-                            await load();
-                            toast("Telegram connected.");
-                          } else setStep(r.step);
-                        });
-                      }}
-                    >
-                      <label>
-                        {step === "password"
-                          ? "Two-step verification password"
-                          : "Telegram login code"}
-                        <Input
-                          type={step === "password" ? "password" : "text"}
-                          autoComplete="off"
-                          value={step === "password" ? password : code}
-                          onChange={(e) =>
-                            step === "password"
-                              ? setPassword(e.target.value)
-                              : setCode(e.target.value)
+              </section>
+              <section className="panel">
+                <div className="panel-heading">
+                  <div className="panel-icon">
+                    <Radio size={22} />
+                  </div>
+                  <div>
+                    <h2>Channels</h2>
+                    <p>Add a channel and confirm the bot can post there.</p>
+                  </div>
+                  <span className="badge">
+                    {settings.telegram.channels.length || 0} channels
+                  </span>
+                </div>
+                {settings.telegram.channels.length ? (
+                  <div className="channel-list">
+                    {settings.telegram.channels.map((item) => (
+                      <div className="channel-row" key={item.id}>
+                        <span className="channel-icon">
+                          <Radio size={17} />
+                        </span>
+                        <div className="channel-copy">
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.username ? "@" + item.username : item.id}
+                          </small>
+                          {item.error ? (
+                            <small className="channel-error">
+                              <AlertTriangle size={12} /> {item.error}
+                            </small>
+                          ) : (
+                            <small className="channel-ok">
+                              <Check size={12} /> Verified — bot is an
+                              administrator
+                            </small>
+                          )}
+                        </div>
+                        <button
+                          className="icon-button"
+                          aria-label={`Verify ${item.name}`}
+                          title="Verify bot access"
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              await api(
+                                `/telegram/channels/${item.id}/verify`,
+                                json("POST"),
+                              );
+                              await load();
+                              toast("Channel access verified.");
+                            })
                           }
-                          required
-                        />
-                      </label>
-                      <p className="hint">
-                        Login codes and two-step verification passwords are used
-                        once and never saved.
-                      </p>
-                      <div className="form-actions">
-                        <button className="primary" disabled={busy}>
-                          <KeyRound size={16} />{" "}
-                          {step === "password"
-                            ? "Unlock account"
-                            : "Verify code"}
+                        >
+                          <RefreshCw size={15} />
                         </button>
                         <button
-                          type="button"
-                          className="text-link"
+                          className="icon-button"
+                          aria-label={`Remove ${item.name}`}
+                          disabled={busy}
                           onClick={() => {
-                            setStep("connect");
-                            setCode("");
-                            setPassword("");
+                            if (confirm(`Remove ${item.name} from settings?`))
+                              run(async () => {
+                                await api(
+                                  `/telegram/channels/${item.id}`,
+                                  json("DELETE"),
+                                );
+                                await load();
+                                toast("Channel removed.");
+                              });
                           }}
                         >
-                          Start again
+                          <Trash2 size={15} />
                         </button>
                       </div>
-                    </form>
-                  )}
-                </div>
-              )}
-              <div className="note">
-                <Check size={16} />
-                <span>
-                  Clips are sent only when you click Send. Connecting an account
-                  never sends a message.
-                </span>
-              </div>
-            </section>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="hint">
+                    No channels yet. Promote the bot to channel administrator,
+                    then add the channel below.
+                  </p>
+                )}
+                <form
+                  className="channel-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    run(async () => {
+                      await api(
+                        "/telegram/channels",
+                        json("POST", { channel }),
+                      );
+                      setChannel("");
+                      await load();
+                      toast("Channel verified and added.");
+                    });
+                  }}
+                >
+                  <label>
+                    Add a channel
+                    <Input
+                      value={channel}
+                      onChange={(e) => setChannel(e.target.value)}
+                      placeholder="@channel, t.me/channel or -100…"
+                      required
+                    />
+                  </label>
+                  <button className="secondary" disabled={busy || !connected}>
+                    {busy ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : (
+                      <Plus size={16} />
+                    )}{" "}
+                    Add & verify
+                  </button>
+                </form>
+                <p className="hint">
+                  The check confirms the bot is an administrator with permission
+                  to post messages. Save working bot credentials first.
+                </p>
+              </section>
+            </div>
           </div>
           <div hidden={section !== "storage"}>
             <section className="panel">

@@ -67,10 +67,35 @@ class AutoSubtitleRequest(Strict):
     translate: bool = True
 
 
+DEFAULT_CAPTION_PROMPT = """تو یک نویسندهٔ حرفه‌ای کپشن تلگرام هستی. بر اساس زیرنویس‌های انگلیسی یا فارسی کلیپ و نام پروژه، یک کپشن فارسی جذاب و دقیق بنویس.
+
+ساختار خروجی را دقیقاً به این شکل رعایت کن و هیچ متن اضافه‌ای قبل یا بعد از آن ننویس:
+
+نام اثر:
+[نام فیلم یا سریال]
+
+سال انتشار:
+[سال]
+
+امتیاز IMDb:
+[امتیاز] از [تعداد رأی] هزار رأی
+
+توضیحات صحنه:
+[یک پاراگراف کوتاه، جذاب و توصیفی دربارهٔ صحنه، شخصیت‌ها، تنش و مفهوم آن، فقط بر اساس زیرنویس‌ها و زمینهٔ کلیپ]
+
+قواعد:
+- متن داخل [] را با مقدار واقعی جایگزین کن و خود کروشه‌ها را ننویس.
+- اگر نام اثر، سال یا امتیاز IMDb را با اطمینان نمی‌دانی، همان مقدار را «نامشخص» بنویس و حدس نزن.
+- توضیحات صحنه را به فارسی روان و طبیعی بنویس.
+- از Markdown، ایموجی، هشتگ یا بولت استفاده نکن.
+- خروجی فقط متن خام کپشن باشد و کمتر از ۹۰۰ کاراکتر باشد."""
+
+
 class AIConfig(Strict):
     api_key: str = Field(default="", max_length=512)
     base_url: str = Field(default="http://localhost:20128/v1", max_length=500)
     model: str = Field(default="kr/claude-sonnet-4.5", max_length=200)
+    caption_prompt: str = Field(default=DEFAULT_CAPTION_PROMPT, max_length=8000)
     clear_key: bool = False
 
 
@@ -249,23 +274,35 @@ class Login(Strict):
 class TelegramConfig(Strict):
     api_id: int = Field(gt=0)
     api_hash: str = Field(default="", max_length=100)
-    phone: str = Field(min_length=7, max_length=30)
-    destination: str = "me"
+    bot_token: str = Field(default="", max_length=200)
 
 
-class TelegramCode(Strict):
-    code: str = Field(default="", max_length=20)
-    password: str = Field(default="", max_length=512)
+class TelegramChannel(Strict):
+    channel: str = Field(min_length=1, max_length=300)
 
 
 class SendClip(Strict):
-    destination: str = Field(default="me", max_length=150)
+    destination: str = Field(default="", max_length=150)
     caption: str = Field(default="", max_length=1024)
     as_file: bool = False
 
 
 class CoverSelection(Strict):
     time: float | None = Field(default=None, ge=0)
+
+
+class CoverFrameSelection(Strict):
+    time: float | None = Field(default=None, ge=0)
+    start: float | None = Field(default=None, ge=0)
+    end: float | None = Field(default=None, gt=0)
+    edit: Edit | None = None
+
+
+class CoverFrameCandidates(Strict):
+    count: int = Field(default=6, ge=2, le=12)
+    start: float | None = Field(default=None, ge=0)
+    end: float | None = Field(default=None, gt=0)
+    edit: Edit | None = None
 
 
 class StorageConfig(Strict):
