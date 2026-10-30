@@ -52,6 +52,7 @@
   font-size: 14px;
   line-height: 1.5;
   color-scheme: light;
+  overscroll-behavior: contain;
 }
 
 .tg-editor[data-theme="dark"] {
@@ -349,8 +350,8 @@
 
 /* Anchored panel ---------------------------------------------------------- */
 
-/* Panels are positioned against the toolbar, not their trigger button. This
-   keeps them inside the editor when the toolbar wraps on narrow screens. */
+/* The toolbar is the containing block so wrapped rows cannot push a panel
+   outside the editor. The component supplies a clamped offset from the button. */
 .tg-pop {
   position: static;
 }
@@ -362,7 +363,7 @@
   inset-inline-end: auto;
   z-index: 40;
   width: min(360px, calc(100% - 24px));
-  max-height: min(520px, calc(100dvh - 170px));
+  max-height: min(520px, calc(100dvh - 220px));
   overflow: auto;
   overscroll-behavior: contain;
   padding: 12px;
@@ -370,18 +371,6 @@
   border-radius: 12px;
   background: var(--tg-surface);
   box-shadow: var(--tg-shadow);
-}
-
-/* The editor clips its rounded corners, which also clips tool panels. While a
-   panel is open, let it use the full modal area instead of being cut off. */
-.tg-editor:has(.tg-pop-panel),
-.tg-modal-panel:has(.tg-pop-panel) {
-  overflow: visible;
-}
-
-.tg-pop[data-align="end"] .tg-pop-panel {
-  inset-inline-start: auto;
-  inset-inline-end: 12px;
 }
 
 .tg-menu {
@@ -1097,8 +1086,8 @@
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(2, 6, 23, 0.62);
-  backdrop-filter: blur(4px);
+  background: #020617;
+  overscroll-behavior: contain;
 }
 
 .tg-modal-panel {
@@ -1107,6 +1096,7 @@
   height: min(1000px, 94dvh);
   min-height: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
   border-radius: 16px;
   box-shadow: 0 30px 90px -30px rgba(0, 0, 0, 0.75);
 }
