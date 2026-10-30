@@ -2696,3 +2696,74 @@ label.check {
 .check > span {
   line-height: 1.5;
 }
+
+/* Advanced editor drawer: primary cutting stays in view, deeper controls
+   only take space while they are open. */
+.editor-layout {
+  display: block;
+  position: relative;
+}
+.edit-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: min(92vw, 360px);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  border-left: 1px solid var(--line);
+  background: #1d212b;
+  box-shadow: -18px 0 45px rgba(0, 0, 0, 0.42);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 0.18s ease,
+    visibility 0.18s;
+}
+.edit-sidebar.open {
+  transform: translateX(0);
+  visibility: visible;
+}
+.edit-sidebar-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  padding: 0;
+  background: rgba(7, 9, 13, 0.46);
+  cursor: default;
+}
+.edit-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 0 17px;
+}
+.edit-sidebar-head .eyebrow {
+  font-size: 8px;
+  margin: 0;
+}
+.edit-sidebar .edit-tabs {
+  padding-top: 4px;
+}
+.edit-sidebar .edit-controls {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+@media (max-width: 760px) {
+  .edit-sidebar {
+    width: 100%;
+    max-width: 100%;
+  }
+  .edit-sidebar .edit-controls {
+    padding: 22px 18px;
+  }
+}
+.editor-heading .form-actions {
+  flex-wrap: wrap;
+}

@@ -104,6 +104,7 @@ export type Project = {
   edit: Edit;
   has_source: boolean;
   has_thumbnail: boolean;
+  rendered?: boolean;
   subtitles?: {
     id: string;
     title: string;
@@ -166,6 +167,7 @@ export type Settings = {
   };
   elevenlabs: {
     model: string;
+    max_duration_minutes: number;
     api_key_saved: boolean;
   };
 };

@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .font_catalog import FontFamily
 
+AUTO_SUBTITLE_DEFAULT_MINUTES = 6
+AUTO_SUBTITLE_MAX_MINUTES = 600
+
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -74,6 +77,9 @@ class AIConfig(Strict):
 class ElevenLabsConfig(Strict):
     api_key: str = Field(default="", max_length=512)
     model: str = Field(default="scribe_v2", max_length=100)
+    max_duration_minutes: int | None = Field(
+        default=None, ge=1, le=AUTO_SUBTITLE_MAX_MINUTES
+    )
     clear_key: bool = False
 
 

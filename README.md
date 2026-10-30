@@ -54,11 +54,11 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 ## Create a clip
 
 1. Click **New project** and paste a direct media URL or upload a video. Website page URLs, platform scraping, DRM, and adaptive playlists are outside the importer.
-2. Wait for inspection. The original video plays if your browser supports its codecs and container. In **Captions**, click **Auto subtitle** for English + Persian, or choose/upload your own tracks. Embedded source subtitles are listed but stay off by default; enable **Use the video's original soft subtitles** to use them instead. If the original cannot play, you can still trim and render it.
-3. Drag the timeline handles or enter exact start/end seconds. Use **Set start here**, **Set end here**, and loop to refine the selection.
-4. Choose a frame in **Frame**. Fill crops the edges; Fit retains the whole source with black padding. Drag to reframe or use the position sliders.
-5. Style captions, add a watermark in **Mark**, and choose music or an audio track in **Audio**. Save cue text changes with **Save cues**; other valid edit settings save automatically.
-6. Click **Render preview** to check up to six seconds of the actual output. Click **Render clip** for the full selected section. Results appear below the editor and in **Rendered clips**.
+2. Wait for inspection. The original video plays if your browser supports its codecs and container. Click **Auto subtitle** in the editor header for English + Persian, or open **Advanced → Captions** to choose/upload your own tracks. Embedded source subtitles are listed but stay off by default; enable **Use the video's original soft subtitles** to use them instead. If the original cannot play, you can still trim and render it.
+3. Drag the timeline handles or enter exact start/end seconds in **Advanced → Clip**. Use **Set start here**, **Set end here**, and loop to refine the selection.
+4. Open **Advanced → Frame** to choose a frame. Fill crops the edges; Fit retains the whole source with black padding. Drag to reframe or use the position sliders.
+5. In **Advanced**, style captions, add a watermark in **Mark**, and choose music or an audio track in **Audio**. Save cue text changes with **Save cues**; other valid edit settings save automatically.
+6. Click **Render preview** to check up to six seconds of the actual output. Click **Render clip** for the full selected section. An identical cut is only rendered once; change the cut or delete the old export before rendering it again. Results appear below the editor and in **Rendered clips**.
 7. Download the MP4, or open a clip and explicitly click **Send now** after connecting Telegram.
 
 Font sizes and margins use a 1080-pixel reference height and scale with the output. Resolution controls the longest output edge; the default 1920-pixel edge produces Full HD landscape or vertical clips. Subtitle timing offsets use source time; watermark visibility uses time relative to the clip start. Cues that cross trim boundaries are clipped and shifted correctly. A render captures its edit settings and subtitle text when queued.
@@ -72,9 +72,10 @@ The caption pipeline follows [Viditor](https://github.com/2000ostd/viditor): the
 In **Settings → Auto subtitles**, save both credentials:
 
 - **ElevenLabs API token** for speech-to-text. The default model is `scribe_v2`; the audio is extracted to a small mono MP3 before upload.
+- **Maximum video length** in minutes (default 6). Longer videos are blocked before any transcription or translation request is sent, so a long import cannot silently consume tokens. Raise the limit when you intentionally want to subtitle longer videos.
 - **9Router base URL, API token, and model** for translation. 9Router exposes an OpenAI-compatible `/chat/completions` endpoint; its default local address is `http://localhost:20128/v1`. Point this at the router that is reachable from the application container.
 
-Open a project and click **Auto subtitle** in the editor header or the Captions tab. The background job extracts audio, transcribes it with word timing, groups the words into readable cues, translates every cue to Persian in numbered batches, and replaces only the previous automatic tracks. The finished project gets two editable tracks: **English (auto)** and **فارسی (خودکار)**.
+Open a project and click **Auto subtitle** in the editor header or under **Advanced → Captions**. The background job extracts audio, transcribes it with word timing, groups the words into readable cues, translates every cue to Persian in numbered batches, and replaces only the previous automatic tracks. The finished project gets two editable tracks: **English (auto)** and **فارسی (خودکار)**. Projects that already have automatic subtitles are not transcribed again; edit the existing tracks or upload a replacement instead.
 
 To edit while watching, pause the player and click a caption line on the video. The line becomes an in-place text field; press Ctrl/⌘+Enter or click elsewhere to save. Press Escape to cancel. The same cues are available as a paginated list in the Captions tab, with separate English and Persian track buttons.
 

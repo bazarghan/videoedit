@@ -17,6 +17,7 @@ from pwdlib import PasswordHash
 
 from . import media
 from . import store as s
+from .autosubtitle import max_duration_minutes
 from .font_catalog import FONT_SLUGS, font_path
 from .models import (
     AIConfig,
@@ -306,7 +307,12 @@ async def projects():
 
 @app.get("/api/projects/{ident}")
 async def get_project(ident: str):
-    row = public_project(project(ident))
+    db_row = project(ident)
+    row = public_project(db_row)
+    edit = Edit.model_validate(row["edit"])
+    row["rendered"] = rendered_clip(
+        ident, render_fingerprint(db_row, edit, False), preview=False
+    )
     row["subtitles"] = [
         {k: v for k, v in st.items() if k not in ("cues", "ass_path")}
         for st in s.rows("SELECT * FROM subtitles WHERE project_id=?", (ident,))
@@ -405,7 +411,10 @@ async def save_edit(ident: str, body: Edit):
     row = project(ident)
     validate_edit(row, body)
     s.execute("UPDATE projects SET edit=? WHERE id=?", (body.model_dump_json(), ident))
-    return {"ok": True}
+    rendered = rendered_clip(
+        ident, render_fingerprint(row, body, False), preview=False
+    )
+    return {"ok": True, "rendered": rendered}
 
 
 def validate_edit(row, body):
@@ -422,10 +431,81 @@ def validate_edit(row, body):
         )
 
 
+def render_fingerprint(row, body: Edit, preview: bool):
+    """Identify a render from everything that changes its output."""
+    tracks = []
+    for track_id in (body.subtitles.track_id, body.subtitles.fa_track_id):
+        tracks.append(
+            s.one(
+                "SELECT cues, ass_path FROM subtitles WHERE id=? AND project_id=?",
+                (track_id, row["id"]),
+            )
+            if track_id
+            else None
+        )
+    source_state = None
+    if row["source"]:
+        try:
+            stat = Path(row["source"]).stat()
+            source_state = [stat.st_size, stat.st_mtime_ns]
+        except OSError:
+            source_state = None
+    material = {
+        "edit": body.model_dump(mode="json"),
+        "preview": preview,
+        "tracks": tracks,
+        "source": source_state,
+        "metadata": json.loads(row["metadata"]),
+    }
+    return hashlib.sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def rendered_clip(ident, fingerprint, preview):
+    for clip in s.rows(
+        "SELECT preview, metadata FROM clips WHERE project_id=?", (ident,)
+    ):
+        if bool(clip["preview"]) != preview:
+            continue
+        try:
+            if json.loads(clip["metadata"]).get("render_signature") == fingerprint:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def existing_render(ident, fingerprint, preview):
+    """Return 'active' or 'done' when this exact render already exists."""
+    for job in s.rows(
+        "SELECT payload FROM jobs WHERE project_id=? AND kind='render' "
+        "AND status IN ('queued','running')",
+        (ident,),
+    ):
+        try:
+            payload = s.decrypt(job["payload"])
+        except Exception:
+            continue
+        if payload.get("signature") == fingerprint:
+            return "active"
+    return "done" if rendered_clip(ident, fingerprint, preview) else None
+
+
 @app.post("/api/projects/{ident}/render")
 async def render_project(ident: str, body: Edit, preview: bool = False):
     row = project(ident)
     validate_edit(row, body)
+    fingerprint = render_fingerprint(row, body, preview)
+    previous = existing_render(ident, fingerprint, preview)
+    if previous == "active":
+        raise HTTPException(409, "This exact clip is already being rendered.")
+    if previous == "done":
+        raise HTTPException(
+            409,
+            "This exact clip is already rendered. Open it from Recent exports, "
+            "or change the cut before rendering again.",
+        )
     s.space_for()
     s.execute("UPDATE projects SET edit=? WHERE id=?", (body.model_dump_json(), ident))
     return {
@@ -435,6 +515,7 @@ async def render_project(ident: str, body: Edit, preview: bool = False):
             {
                 "edit": body.model_dump(),
                 "preview": preview,
+                "signature": fingerprint,
                 "subtitle_snapshot": s.one(
                     "SELECT * FROM subtitles WHERE id=? AND project_id=?",
                     (body.subtitles.track_id, ident),
@@ -479,7 +560,12 @@ async def edit_subtitles(ident: str, track_id: str, body: list[Cue]):
         "UPDATE subtitles SET cues=? WHERE id=?",
         (json.dumps([c.model_dump() for c in body]), track_id),
     )
-    return {"ok": True}
+    project_row = project(ident)
+    edit = Edit.model_validate(json.loads(project_row["edit"]))
+    rendered = rendered_clip(
+        ident, render_fingerprint(project_row, edit, False), preview=False
+    )
+    return {"ok": True, "rendered": rendered}
 
 
 @app.post("/api/projects/{ident}/subtitles")
@@ -512,16 +598,38 @@ async def upload_subtitles(
 
 @app.post("/api/projects/{ident}/autosubtitle")
 async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
-    project(ident)
+    row = project(ident)
     if s.one(
         "SELECT id FROM jobs WHERE project_id=? AND kind='autosubtitle' AND status IN ('queued','running')",
         (ident,),
     ):
         raise ValueError("Automatic subtitles are already running for this project.")
-    if not s.setting("elevenlabs", {}).get("api_key"):
+    elevenlabs = s.setting("elevenlabs", {})
+    if not elevenlabs.get("api_key"):
         raise ValueError("Add your ElevenLabs API token in Settings first.")
     if body.translate and not s.setting("ai", {}).get("api_key"):
         raise ValueError("Add your 9Router API token in Settings first.")
+    limit = max_duration_minutes(elevenlabs)
+    duration = float(json.loads(row["metadata"]).get("duration") or 0)
+    if duration > limit * 60 + 0.5:
+        raise ValueError(
+            f"This video is {duration / 60:.1f} minutes long. Automatic "
+            f"subtitles are limited to {limit} minutes; raise the limit in "
+            "Settings → Auto subtitles or import a shorter video."
+        )
+    latest = s.one(
+        "SELECT status FROM jobs WHERE project_id=? AND kind='autosubtitle' "
+        "ORDER BY created DESC LIMIT 1",
+        (ident,),
+    )
+    if s.one(
+        "SELECT id FROM subtitles WHERE project_id=? AND origin='auto'",
+        (ident,),
+    ) and (not latest or latest["status"] == "completed"):
+        raise ValueError(
+            "Automatic subtitles already exist for this project. Edit the "
+            "existing tracks or upload a replacement instead of using more tokens."
+        )
     return {
         "job_id": s.job(
             "autosubtitle",
@@ -613,12 +721,23 @@ async def retry_job(ident: str):
         )
     if not row or row["status"] not in ("failed", "cancelled", "interrupted"):
         raise ValueError("Only failed, cancelled or interrupted jobs can be retried.")
+    payload = s.decrypt(row["payload"])
+    if row["kind"] == "render" and payload.get("signature"):
+        if existing_render(
+            row["project_id"],
+            payload["signature"],
+            bool(payload.get("preview")),
+        ):
+            raise ValueError(
+                "This exact clip is already rendered or rendering. Open the "
+                "existing export instead of retrying this job."
+            )
     if row["kind"] in ("download", "ingest"):
         p = project(row["project_id"])
         # Remove partial subtitle extraction before retrying ingestion.
         s.execute("DELETE FROM subtitles WHERE project_id=?", (p["id"],))
         s.execute("UPDATE projects SET status='queued' WHERE id=?", (p["id"],))
-    return {"job_id": s.job(row["kind"], row["project_id"], s.decrypt(row["payload"]))}
+    return {"job_id": s.job(row["kind"], row["project_id"], payload)}
 
 
 def public_clip(row):
@@ -798,6 +917,7 @@ def elevenlabs_settings():
     config = s.setting("elevenlabs", {})
     return {
         "model": config.get("model", "scribe_v2"),
+        "max_duration_minutes": max_duration_minutes(config),
         "api_key_saved": bool(config.get("api_key")),
     }
 
@@ -860,11 +980,15 @@ async def save_elevenlabs_settings(body: ElevenLabsConfig):
         api_key = ""
     elif body.api_key.strip():
         api_key = body.api_key.strip()
+    minutes = body.max_duration_minutes
+    if minutes is None:
+        minutes = max_duration_minutes(existing)
     s.set_setting(
         "elevenlabs",
         {
             "api_key": api_key,
             "model": body.model.strip() or "scribe_v2",
+            "max_duration_minutes": minutes,
         },
     )
     return elevenlabs_settings()

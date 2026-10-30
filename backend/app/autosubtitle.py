@@ -16,13 +16,30 @@ import pysubs2
 
 from . import media
 from . import store as s
-from .models import Edit
+from .models import (
+    AUTO_SUBTITLE_DEFAULT_MINUTES,
+    AUTO_SUBTITLE_MAX_MINUTES,
+    Edit,
+)
 
 ELEVENLABS_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 MAX_CUE_SECONDS = 6.0
 MAX_CUE_CHARS = 90
 SENTENCE_END = re.compile(r"[.!?…。！？]$")
 NUMBERED_LINE = re.compile(r"^\s*\[?(\d{1,4})\]?[\s.:：)\-–—]+(.+?)\s*$")
+
+
+def max_duration_minutes(config):
+    """Return the saved auto-subtitle duration cap in whole minutes."""
+    try:
+        value = int(
+            (config or {}).get(
+                "max_duration_minutes", AUTO_SUBTITLE_DEFAULT_MINUTES
+            )
+        )
+    except (TypeError, ValueError):
+        value = AUTO_SUBTITLE_DEFAULT_MINUTES
+    return max(1, min(AUTO_SUBTITLE_MAX_MINUTES, value))
 
 
 def _number(value):
@@ -345,6 +362,13 @@ async def run(project, payload, ident):
 
     meta = json.loads(project["metadata"])
     duration = float(meta.get("duration") or 0)
+    limit = max_duration_minutes(elevenlabs)
+    if duration > limit * 60 + 0.5:
+        raise ValueError(
+            f"This video is {duration / 60:.1f} minutes long. Automatic "
+            f"subtitles are limited to {limit} minutes; raise the limit in "
+            "Settings → Auto subtitles or import a shorter video."
+        )
     work = s.DATA / "work" / (ident + "-autosubtitle")
     work.mkdir(parents=True, exist_ok=True)
     try:

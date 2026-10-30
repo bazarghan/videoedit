@@ -39,6 +39,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     [aiModel, setAiModel] = useState("kr/claude-sonnet-4.5"),
     [aiKey, setAiKey] = useState(""),
     [elevenModel, setElevenModel] = useState("scribe_v2"),
+    [elevenMax, setElevenMax] = useState(6),
     [elevenKey, setElevenKey] = useState(""),
     [section, setSection] = useState("defaults"),
     [step, setStep] = useState("connect"),
@@ -59,6 +60,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     setAiBase(s.ai.base_url);
     setAiModel(s.ai.model);
     setElevenModel(s.elevenlabs.model);
+    setElevenMax(s.elevenlabs.max_duration_minutes);
     setStep(s.telegram_status.step || "connect");
     if (s.telegram_status.connected)
       setDestinations(await api("/telegram/destinations"));
@@ -202,6 +204,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       json("PUT", {
                         api_key: elevenKey,
                         model: elevenModel,
+                        max_duration_minutes: Number(elevenMax),
                       }),
                     );
                     await api(
@@ -247,6 +250,22 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     placeholder="scribe_v2"
                   />
                 </label>
+                <label>
+                  Maximum video length (minutes)
+                  <Input
+                    type="number"
+                    min={1}
+                    max={600}
+                    step={1}
+                    value={elevenMax}
+                    onChange={(e) => setElevenMax(Number(e.target.value))}
+                    required
+                  />
+                </label>
+                <p className="hint">
+                  Videos longer than this are blocked before any ElevenLabs
+                  tokens are used. The default is 6 minutes.
+                </p>
                 <p className="hint">
                   Use <code>scribe_v2</code> for ElevenLabs Scribe v2
                   (recommended) or <code>scribe_v1</code> for the older model.

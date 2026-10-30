@@ -3,9 +3,18 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app import autosubtitle
 from app import store as s
 from app.models import Edit
+
+
+def test_max_duration_defaults_and_clamps():
+    assert autosubtitle.max_duration_minutes({}) == 6
+    assert autosubtitle.max_duration_minutes({"max_duration_minutes": 15}) == 15
+    assert autosubtitle.max_duration_minutes({"max_duration_minutes": 0}) == 1
+    assert autosubtitle.max_duration_minutes({"max_duration_minutes": "bad"}) == 6
 
 
 def test_cues_from_words_groups_pauses_and_respects_sentences():
@@ -101,6 +110,51 @@ def test_run_writes_english_and_persian_tracks(monkeypatch, tmp_path):
     assert edit.subtitles.fa_track_id == result["fa_track_id"]
     assert edit.subtitles.burn is True and edit.subtitles.soft is False
     s.execute("DELETE FROM subtitles WHERE project_id=?", (project_id,))
+    s.execute("DELETE FROM projects WHERE id=?", (project_id,))
+    s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    s.set_setting("elevenlabs", {})
+    s.set_setting("ai", {})
+
+
+def test_run_rejects_video_over_duration_limit_without_spending_tokens(
+    monkeypatch, tmp_path
+):
+    project_id = s.uid()
+    source = tmp_path / "long.mp4"
+    source.write_bytes(b"video")
+    s.execute(
+        "INSERT INTO projects(id,name,source,metadata,edit,status,created) VALUES (?,?,?,?,?,?,?)",
+        (
+            project_id,
+            "Too long",
+            str(source),
+            json.dumps({"duration": 400}),
+            Edit().model_dump_json(),
+            "ready",
+            0,
+        ),
+    )
+    s.set_setting(
+        "elevenlabs",
+        {"api_key": "eleven", "max_duration_minutes": 6},
+    )
+    s.set_setting("ai", {"api_key": "router"})
+    failed = AsyncMock()
+    monkeypatch.setattr(autosubtitle.media, "run", failed)
+    job_id = s.uid()
+    s.execute(
+        "INSERT INTO jobs(id,kind,project_id,payload,status,created) VALUES (?,?,?,?,?,?)",
+        (job_id, "autosubtitle", project_id, "{}", "running", 0),
+    )
+    with pytest.raises(ValueError, match="limited to 6 minutes"):
+        asyncio.run(
+            autosubtitle.run(
+                s.one("SELECT * FROM projects WHERE id=?", (project_id,)),
+                {"language": "en", "translate": True},
+                job_id,
+            )
+        )
+    failed.assert_not_called()
     s.execute("DELETE FROM projects WHERE id=?", (project_id,))
     s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
     s.set_setting("elevenlabs", {})

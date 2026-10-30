@@ -462,6 +462,9 @@ export default function App() {
             id={selected}
             jobs={jobs}
             clips={clips}
+            autoSubtitleLimitMinutes={
+              settings?.elevenlabs.max_duration_minutes ?? 6
+            }
             onError={setError}
             toast={toast}
             onClip={showClip}

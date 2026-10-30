@@ -959,6 +959,8 @@ async def render(project, payload, ident):
                 "The export could not be verified as a Telegram-compatible MP4. Render it again."
             )
         info["telegram_compatible"] = True
+        if payload.get("signature"):
+            info["render_signature"] = payload["signature"]
         info["cover"] = await make_cover(
             {"id": clip_id, "path": str(dest)}, info, ident=ident
         )

@@ -24,6 +24,8 @@ import {
   Scan,
   Sparkles,
   Languages,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
   api,
@@ -63,6 +65,19 @@ function snapMs(value: number) {
   return Math.round(value * 1000) / 1000;
 }
 
+function stableKey(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableKey).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableKey((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "undefined";
+}
+
 function tickStepForSpan(span: number) {
   const raw = Math.max(0.001, span / 8);
   return TICK_STEPS.find((step) => step >= raw) ?? 3600;
@@ -85,6 +100,7 @@ type Props = {
   id: string;
   jobs: Job[];
   clips: Clip[];
+  autoSubtitleLimitMinutes?: number;
   onError: (s: string) => void;
   toast: (s: string) => void;
   onClip: (c: Clip) => void;
@@ -94,6 +110,7 @@ export default function Editor({
   id,
   jobs,
   clips,
+  autoSubtitleLimitMinutes = 6,
   onError,
   toast,
   onClip,
@@ -109,6 +126,8 @@ export default function Editor({
     } | null>(null),
     [cueDraft, setCueDraft] = useState(""),
     [tab, setTab] = useState("clip"),
+    [panelOpen, setPanelOpen] = useState(false),
+    [savedEditKey, setSavedEditKey] = useState(""),
     [time, setTime] = useState(0),
     [playing, setPlaying] = useState(false),
     [loop, setLoop] = useState(false),
@@ -140,6 +159,7 @@ export default function Editor({
   const zoomRef = useRef(1);
   const zoomAnchor = useRef<{ time: number; x: number } | null>(null);
   const autoSubtitleRef = useRef("");
+  const renderJobRef = useRef("");
   const cancelCueEditRef = useRef(false);
   const duration = project?.metadata.duration || 0;
   const rangeStart = refine ? refine.start : 0;
@@ -191,6 +211,29 @@ export default function Editor({
       j.kind === "autosubtitle" &&
       ["queued", "running"].includes(j.status),
   );
+  const lastAutoSubtitleJob = jobs.find(
+    (j) => j.project_id === id && j.kind === "autosubtitle",
+  );
+  const autoSubtitlesReady =
+    !!project?.subtitles?.some((track) => track.origin === "auto") &&
+    (!lastAutoSubtitleJob ||
+      !["failed", "cancelled"].includes(lastAutoSubtitleJob.status));
+  const autoSubtitleTooLong = duration > autoSubtitleLimitMinutes * 60 + 0.5;
+  const activeRender = jobs.find(
+    (j) =>
+      j.project_id === id &&
+      j.kind === "render" &&
+      ["queued", "running"].includes(j.status),
+  );
+  const renderedCurrent =
+    !!project?.rendered && !!edit && stableKey(edit) === savedEditKey;
+  const autoSubtitleBlocked =
+    !project?.has_source || autoSubtitlesReady || autoSubtitleTooLong;
+  const autoSubtitleTitle = autoSubtitlesReady
+    ? "Automatic subtitles already exist for this video. Edit them instead of using more tokens."
+    : autoSubtitleTooLong
+      ? `Automatic subtitles are limited to ${autoSubtitleLimitMinutes} minutes. Raise the limit in Settings → Auto subtitles.`
+      : "Transcribe with ElevenLabs, translate with 9Router, and add English + Persian subtitles";
   const complete = !!project?.metadata.duration;
   const playbackReady = !!project?.has_source && complete;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
@@ -229,11 +272,14 @@ export default function Editor({
     setCuePage(0);
     setRefine(null);
     setAutoStarting(false);
+    setPanelOpen(false);
+    setSavedEditKey("");
     api<Project>(`/projects/${id}`)
       .then((p) => {
         setProject(p);
         if (p.metadata.duration) {
           setEdit(p.edit);
+          setSavedEditKey(stableKey(p.edit));
           setTime(p.edit.start);
         }
       })
@@ -260,8 +306,15 @@ export default function Editor({
       if (edit.end <= edit.start || edit.end > duration) return;
       setSaving(true);
       try {
-        await api(`/projects/${id}/edit`, json("PUT", edit));
+        const result = await api<{ rendered?: boolean }>(
+          `/projects/${id}/edit`,
+          json("PUT", edit),
+        );
         setSaved(true);
+        setSavedEditKey(stableKey(edit));
+        setProject((old) =>
+          old ? { ...old, rendered: !!result.rendered } : old,
+        );
       } catch (e) {
         onError((e as Error).message);
       } finally {
@@ -344,6 +397,29 @@ export default function Editor({
       onError(job!.error);
     }
   }, [jobs, id]);
+  useEffect(() => {
+    const job = jobs.find(
+      (item) => item.project_id === id && item.kind === "render",
+    );
+    if (!job) return;
+    const key = `${job.id}:${job.status}`;
+    if (key === renderJobRef.current) return;
+    renderJobRef.current = key;
+    if (job.status !== "completed") return;
+    // Refresh only the saved project state; the local edit may already contain
+    // unsaved changes and must not be overwritten by an older render snapshot.
+    api<Project>(`/projects/${id}`)
+      .then(setProject)
+      .catch(() => {});
+  }, [jobs, id]);
+  useEffect(() => {
+    if (!panelOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPanelOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [panelOpen]);
   useEffect(() => {
     if (!edit) return;
     if (!edit.subtitles.track_id && edit.subtitles.fa_track_id)
@@ -890,8 +966,14 @@ export default function Editor({
   }
   async function saveTrackCues(trackId: string, next: Cue[], message: string) {
     try {
-      await api(`/projects/${id}/subtitles/${trackId}`, json("PUT", next));
+      const result = await api<{ rendered?: boolean }>(
+        `/projects/${id}/subtitles/${trackId}`,
+        json("PUT", next),
+      );
       setCuesByTrack((old) => ({ ...old, [trackId]: next }));
+      setProject((old) =>
+        old ? { ...old, rendered: !!result.rendered } : old,
+      );
       toast(message);
     } catch (e) {
       onError((e as Error).message);
@@ -1052,13 +1134,18 @@ export default function Editor({
           <button
             className="secondary"
             disabled={
-              busy || !project.has_source || !!autoSubtitleJob || autoStarting
+              busy ||
+              autoSubtitleBlocked ||
+              !!autoSubtitleJob ||
+              autoStarting
             }
             onClick={() => autoSubtitles()}
-            title="Transcribe with ElevenLabs, translate with 9Router, and add English + Persian subtitles"
+            title={autoSubtitleTitle}
           >
             {autoSubtitleJob || autoStarting ? (
               <LoaderCircle className="spin" size={15} />
+            ) : autoSubtitlesReady ? (
+              <CheckIcon size={15} />
             ) : (
               <Sparkles size={15} />
             )}{" "}
@@ -1066,21 +1153,57 @@ export default function Editor({
               ? `Auto subtitle ${autoSubtitleJob.progress.toFixed(0)}%`
               : autoStarting
                 ? "Starting…"
-                : "Auto subtitle"}
+                : autoSubtitlesReady
+                  ? "Subtitles ready"
+                  : "Auto subtitle"}
+          </button>
+          <button
+            className={"secondary " + (panelOpen ? "selected" : "")}
+            type="button"
+            aria-pressed={panelOpen}
+            aria-expanded={panelOpen}
+            aria-controls="advanced-editor-panel"
+            onClick={() => setPanelOpen((open) => !open)}
+            title="Open the advanced editing controls"
+          >
+            <SlidersHorizontal size={15} /> Advanced
           </button>
           <button
             className="secondary"
-            disabled={busy || !project.has_source}
+            disabled={busy || !project.has_source || !!activeRender}
             onClick={() => render(true)}
+            title={
+              activeRender
+                ? "A render is already running for this project."
+                : "Render a six-second preview"
+            }
           >
             <Play size={15} /> Render preview
           </button>
           <button
             className="primary"
-            disabled={busy || edit.end <= edit.start || !project.has_source}
+            disabled={
+              busy ||
+              edit.end <= edit.start ||
+              !project.has_source ||
+              !!activeRender ||
+              renderedCurrent
+            }
             onClick={() => render(false)}
+            title={
+              renderedCurrent
+                ? "This exact cut is already rendered. Open it from Recent exports, or change the clip first."
+                : activeRender
+                  ? "A render is already running for this project."
+                  : undefined
+            }
           >
-            <Download size={16} /> Render clip
+            {renderedCurrent ? (
+              <CheckIcon size={16} />
+            ) : (
+              <Download size={16} />
+            )}{" "}
+            {renderedCurrent ? "Already rendered" : "Render clip"}
           </button>
         </div>
       </div>
@@ -1540,7 +1663,31 @@ export default function Editor({
             the exact captions, crop, watermark, and audio.
           </p>
         </div>
-        <aside className="edit-sidebar">
+        {panelOpen && (
+          <button
+            className="edit-sidebar-backdrop"
+            type="button"
+            aria-label="Close advanced editing controls"
+            onClick={() => setPanelOpen(false)}
+          />
+        )}
+        <aside
+          id="advanced-editor-panel"
+          className={"edit-sidebar" + (panelOpen ? " open" : "")}
+          aria-label="Advanced editing controls"
+          aria-hidden={!panelOpen}
+        >
+          <div className="edit-sidebar-head">
+            <span className="eyebrow">ADVANCED EDITING</span>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Close advanced editing controls"
+              onClick={() => setPanelOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          </div>
           <div className="edit-tabs">
             {[
               { id: "clip", icon: Scissors, label: "Clip" },
@@ -1698,14 +1845,17 @@ export default function Editor({
                   className="secondary wide"
                   disabled={
                     busy ||
-                    !project.has_source ||
+                    autoSubtitleBlocked ||
                     !!autoSubtitleJob ||
                     autoStarting
                   }
                   onClick={() => autoSubtitles()}
+                  title={autoSubtitleTitle}
                 >
                   {autoSubtitleJob || autoStarting ? (
                     <LoaderCircle className="spin" size={16} />
+                  ) : autoSubtitlesReady ? (
+                    <CheckIcon size={16} />
                   ) : (
                     <Sparkles size={16} />
                   )}{" "}
@@ -1713,8 +1863,25 @@ export default function Editor({
                     ? `Transcribing & translating ${autoSubtitleJob.progress.toFixed(0)}%`
                     : autoStarting
                       ? "Starting automatic subtitles…"
-                      : "Auto subtitle (English + فارسی)"}
+                      : autoSubtitlesReady
+                        ? "Automatic subtitles are ready"
+                        : "Auto subtitle (English + فارسی)"}
                 </button>
+                {autoSubtitlesReady && (
+                  <p className="hint">
+                    Automatic subtitles already exist for this video. Edit the
+                    tracks below or upload replacements instead of spending more
+                    ElevenLabs and 9Router tokens.
+                  </p>
+                )}
+                {autoSubtitleTooLong && (
+                  <p className="inline-error">
+                    This video is {clock(duration)} long. Automatic subtitles are
+                    limited to {autoSubtitleLimitMinutes} minutes; raise the
+                    limit in Settings → Auto subtitles or import a shorter
+                    video.
+                  </p>
+                )}
                 <p className="hint">
                   ElevenLabs transcribes the voice, then the 9Router AI model
                   translates it to Persian. Both tracks use Viditor's layout:

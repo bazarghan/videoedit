@@ -175,6 +175,10 @@ def test_complete_workflow(footage, tmp_path):
             and clip["metadata"]["telegram_compatible"]
         )
         assert clip["has_cover"] and clip["metadata"]["cover"]["mode"] == "auto"
+        # The identical cut is not rendered twice (and no credits/CPU are spent).
+        duplicate = client.post(f"/api/projects/{pid}/render", json=edit)
+        assert duplicate.status_code == 409, duplicate.text
+        assert "already rendered" in duplicate.json()["detail"]
         cover = client.get(f"/api/media/clip/{clip['id']}/cover")
         assert (
             cover.status_code == 200 and cover.headers["content-type"] == "image/jpeg"
@@ -296,3 +300,27 @@ def test_encrypted_settings():
     row = s.one("SELECT value FROM settings WHERE key='test_secret'")
     assert "do-not-expose-this" not in row["value"]
     assert s.setting("test_secret") == "do-not-expose-this"
+
+
+def test_autosubtitle_duration_setting_round_trip():
+    before = s.setting("elevenlabs", {})
+    try:
+        with TestClient(app) as client:
+            login(client)
+            saved = client.put(
+                "/api/settings/elevenlabs",
+                json={"model": "scribe_v2", "max_duration_minutes": 12},
+            )
+            assert saved.status_code == 200, saved.text
+            assert saved.json()["max_duration_minutes"] == 12
+            settings = client.get("/api/settings").json()
+            assert settings["elevenlabs"]["max_duration_minutes"] == 12
+            assert (
+                client.put(
+                    "/api/settings/elevenlabs",
+                    json={"model": "scribe_v2", "max_duration_minutes": 0},
+                ).status_code
+                == 422
+            )
+    finally:
+        s.set_setting("elevenlabs", before)
