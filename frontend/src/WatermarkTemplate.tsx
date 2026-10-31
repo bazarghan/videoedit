@@ -103,34 +103,34 @@ export default function WatermarkTemplateEditor({
   return (
     <fieldset disabled={disabled} className="template-editor">
       <p className="hint">
-        Each row is centred in the frame. Elements keep their own font, size,
-        weight, colour, and alignment.
+        هر سطر در قاب وسط‌چین می‌شود. هر عنصر فونت، اندازه، ضخامت، رنگ و
+        ترازبندی خودش را حفظ می‌کند.
       </p>
       {template.rows.map((row, rowIndex) => (
         <div className="template-row" key={rowIndex}>
           <div className="template-row-heading">
-            <strong>Row {rowIndex + 1}</strong>
+            <strong>سطر {rowIndex + 1}</strong>
             <div className="form-actions">
               <button
                 className="text-link"
                 type="button"
                 onClick={() => addElement(rowIndex)}
               >
-                <Plus size={14} /> Add element
+                <Plus size={14} /> افزودن عنصر
               </button>
               <button
                 className="text-link"
                 type="button"
                 onClick={() => removeRow(rowIndex)}
               >
-                <Trash2 size={14} /> Remove row
+                <Trash2 size={14} /> حذف سطر
               </button>
             </div>
           </div>
           {row.map((element, elementIndex) => (
             <div className="template-element" key={elementIndex}>
               <label>
-                Text
+                متن
                 <Input
                   className="h-9 text-xs"
                   value={element.text}
@@ -145,7 +145,7 @@ export default function WatermarkTemplateEditor({
               </label>
               <div className="form-row">
                 <label>
-                  Font
+                  فونت
                   <Select
                     value={element.font_family}
                     options={fonts}
@@ -157,7 +157,7 @@ export default function WatermarkTemplateEditor({
                   />
                 </label>
                 <label>
-                  Size (px)
+                  اندازه (px)
                   <Input
                     className="h-9 text-xs"
                     type="number"
@@ -184,16 +184,16 @@ export default function WatermarkTemplateEditor({
                       })
                     }
                   />
-                  <span>Bold</span>
+                  <span>ضخیم</span>
                 </Label>
                 <label>
-                  Alignment
+                  ترازبندی
                   <Select
                     value={element.alignment}
                     options={[
-                      ["left", "Left"],
-                      ["center", "Center"],
-                      ["right", "Right"],
+                      ["left", "چپ"],
+                      ["center", "وسط"],
+                      ["right", "راست"],
                     ]}
                     onChange={(value) =>
                       setElement(rowIndex, elementIndex, {
@@ -205,7 +205,7 @@ export default function WatermarkTemplateEditor({
               </div>
               <div className="form-row">
                 <label>
-                  Colour
+                  رنگ
                   <input
                     type="color"
                     value={element.color}
@@ -217,7 +217,7 @@ export default function WatermarkTemplateEditor({
                   />
                 </label>
                 <label>
-                  Opacity (0–1)
+                  شفافیت (0–1)
                   <Input
                     className="h-9 text-xs"
                     type="number"
@@ -239,18 +239,18 @@ export default function WatermarkTemplateEditor({
                 type="button"
                 onClick={() => removeElement(rowIndex, elementIndex)}
               >
-                <Trash2 size={14} /> Remove element
+                <Trash2 size={14} /> حذف عنصر
               </button>
             </div>
           ))}
         </div>
       ))}
       <button className="secondary" type="button" onClick={addRow}>
-        <Plus size={14} /> Add row
+        <Plus size={14} /> افزودن سطر
       </button>
       <div className="form-row">
         <label>
-          Horizontal gap (px)
+          فاصلهٔ افقی (px)
           <Input
             className="h-9 text-xs"
             type="number"
@@ -268,7 +268,7 @@ export default function WatermarkTemplateEditor({
           />
         </label>
         <label>
-          Vertical gap (px)
+          فاصلهٔ عمودی (px)
           <Input
             className="h-9 text-xs"
             type="number"
@@ -288,7 +288,7 @@ export default function WatermarkTemplateEditor({
       </div>
       <div className="form-row">
         <label>
-          Border colour
+          رنگ حاشیه
           <input
             type="color"
             value={template.border_color}
@@ -298,7 +298,7 @@ export default function WatermarkTemplateEditor({
           />
         </label>
         <label>
-          Border thickness (px)
+          ضخامت حاشیه (px)
           <Input
             className="h-9 text-xs"
             type="number"
@@ -323,12 +323,12 @@ export default function WatermarkTemplateEditor({
             onChange({ ...template, repeat: value === true })
           }
         />
-        <span>Show the mark repeatedly during the clip</span>
+        <span>نمایش مکرر نشان در طول کلیپ</span>
       </Label>
       {template.repeat && (
         <div className="form-row">
           <label>
-            Visible for (s)
+            مدت نمایش (ثانیه)
             <Input
               className="h-9 text-xs"
               type="number"
@@ -343,7 +343,7 @@ export default function WatermarkTemplateEditor({
             />
           </label>
           <label>
-            Times
+            تعداد
             <Input
               className="h-9 text-xs"
               type="number"

@@ -6,34 +6,124 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ------------------------------------------------------------------ */
+/* IRANYekan — the typeface used across the OnlyFarsiFans admin panel. */
+/* ------------------------------------------------------------------ */
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebThin.woff2") format("woff2");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebLight.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebRegular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebMedium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebBold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebBlack.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IRANYekanWeb";
+  src: url("/fonts/IRANYekanWebExtraBlack.woff2") format("woff2");
+  font-weight: 950;
+  font-style: normal;
+  font-display: swap;
+}
+
 /*
- * shadcn/ui theme tokens.
- *
- * The editor already uses `--accent` for its lime brand colour, so the shadcn
- * palette lives on `--ui-*` variables and is mapped to Tailwind's `--color-*`
- * namespace below. That keeps both systems independent.
+ * Design tokens lifted from the OnlyFarsiFans panel:
+ * indigo brand, teal accent, layered neutral elevations and compact radii.
  */
 :root {
-  --radius: 0.55rem;
+  --radius: 0.5rem;
 
-  --ui-background: #11131a;
-  --ui-foreground: #e9eaf1;
-  --ui-card: #191c25;
-  --ui-card-foreground: #e9eaf1;
-  --ui-popover: #1a1e28;
-  --ui-popover-foreground: #e9eaf1;
-  --ui-primary: #c3f26a;
-  --ui-primary-foreground: #1b2416;
-  --ui-secondary: #242833;
-  --ui-secondary-foreground: #d9dce5;
-  --ui-muted: #20242d;
-  --ui-muted-foreground: #969ba9;
-  --ui-accent: #2c3726;
-  --ui-accent-foreground: #c3f26a;
-  --ui-destructive: #ef7f8b;
-  --ui-border: #2a2e3a;
-  --ui-input: #353c4b;
-  --ui-ring: #9fbf75;
+  --ui-background: #151618;
+  --ui-foreground: #cccccc;
+  --ui-card: #1a1b1d;
+  --ui-card-foreground: #e6e6e6;
+  --ui-popover: #1e1f21;
+  --ui-popover-foreground: #e6e6e6;
+  --ui-primary: #3f51b5;
+  --ui-primary-foreground: #ffffff;
+  --ui-secondary: #222325;
+  --ui-secondary-foreground: #cccccc;
+  --ui-muted: #1e1f21;
+  --ui-muted-foreground: #999999;
+  --ui-accent: rgba(63, 81, 181, 0.2);
+  --ui-accent-foreground: #9fa8da;
+  --ui-destructive: #e57373;
+  --ui-border: rgba(255, 255, 255, 0.1);
+  --ui-input: rgba(255, 255, 255, 0.15);
+  --ui-ring: #3f51b5;
+
+  --brand: #3f51b5;
+  --brand-05: rgba(63, 81, 181, 0.05);
+  --brand-10: rgba(63, 81, 181, 0.1);
+  --brand-20: rgba(63, 81, 181, 0.2);
+  --brand-30: rgba(63, 81, 181, 0.3);
+  --brand-40: rgba(63, 81, 181, 0.4);
+  --primary-indigo: #5c6bc0;
+  --secondary-indigo: #9fa8da;
+  --teal: #009688;
+  --teal-10: rgba(0, 150, 136, 0.1);
+  --teal-20: rgba(0, 150, 136, 0.2);
+  --danger: #e57373;
+  --success: #0e9070;
+  --warning: #cddc39;
+  --info: #64b5f6;
+
+  --elevation-minus-2: #0b0c0e;
+  --elevation-minus-1: #101113;
+  --elevation-0: #151618;
+  --elevation-1: #1a1b1d;
+  --elevation-2: #1e1f21;
+  --elevation-3: #222325;
+  --elevation-4: #262729;
+
+  --text-primary: #cccccc;
+  --text-secondary: #999999;
+  --text-tertiary: #666666;
+  --placeholder: #4c4c4c;
+  --border-primary: rgba(255, 255, 255, 0.15);
+  --border-secondary: rgba(255, 255, 255, 0.1);
+  --border-tertiary: rgba(255, 255, 255, 0.05);
+  --hover: rgba(255, 255, 255, 0.04);
 }
 
 @theme inline {
@@ -56,16 +146,55 @@
   --color-input: var(--ui-input);
   --color-ring: var(--ui-ring);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-brand: var(--brand);
+  --color-brand-10: var(--brand-10);
+  --color-brand-20: var(--brand-20);
+  --color-brand-30: var(--brand-30);
+  --color-brand-40: var(--brand-40);
+  --color-elevation-minus-2: var(--elevation-minus-2);
+  --color-elevation-minus-1: var(--elevation-minus-1);
+  --color-elevation-0: var(--elevation-0);
+  --color-elevation-1: var(--elevation-1);
+  --color-elevation-2: var(--elevation-2);
+  --color-elevation-3: var(--elevation-3);
+  --color-elevation-4: var(--elevation-4);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-placeholder: var(--placeholder);
+  --color-hover: var(--hover);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
 
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+
+  --font-sans: "IRANYekanWeb", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: rgba(63, 81, 181, 0.35);
+    color: #ffffff;
   }
 }

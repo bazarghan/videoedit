@@ -22,10 +22,10 @@ import {
 export function TelegramEditor({
   value,
   onChange,
-  title = 'Message editor',
+  title = 'ویرایشگر پیام',
   description,
   label,
-  placeholder = 'Write your message…',
+  placeholder = 'پیام خود را بنویسید…',
   format = FORMAT_HTML,
   onFormatChange,
   richEnabled = true,
@@ -36,8 +36,8 @@ export function TelegramEditor({
   autoFocus = false,
   onApply,
   onCancel,
-  applyLabel = 'Apply',
-  cancelLabel = 'Cancel',
+  applyLabel = 'اعمال',
+  cancelLabel = 'لغو',
   className = '',
 }) {
   const uid = useId().replaceAll(':', '')
@@ -99,7 +99,7 @@ export function TelegramEditor({
     const { from: start, to: end } = view.state.selection.main
     const nextLength = view.state.doc.length - (end - start) + insert.length
     if (nextLength > effectiveMaxLength) {
-      setInsertionError(`This field allows up to ${effectiveMaxLength} characters, including formatting.`)
+      setInsertionError(`این فیلد حداکثر ${effectiveMaxLength} نویسه را شامل قالب‌بندی می‌پذیرد.`)
       return false
     }
     setInsertionError('')
@@ -145,17 +145,17 @@ export function TelegramEditor({
 
         <div className="tg-header-actions">
           {richEnabled && (
-            <div className="tg-segment" role="group" aria-label="Message format">
+            <div className="tg-segment" role="group" aria-label="قالب پیام">
               <button type="button" aria-pressed={!rich} onClick={() => changeFormat(FORMAT_HTML)}>
-                Regular HTML
+                HTML ساده
               </button>
               <button type="button" aria-pressed={rich} onClick={() => changeFormat(FORMAT_RICH)}>
-                Rich Message
+                پیام غنی
               </button>
             </div>
           )}
           {onCancel && (
-            <button type="button" className="tg-icon-btn" aria-label="Close editor" title="Close editor" onClick={onCancel}>
+            <button type="button" className="tg-icon-btn" aria-label="بستن ویرایشگر" title="بستن ویرایشگر" onClick={onCancel}>
               <X size={17} />
             </button>
           )}
@@ -171,7 +171,7 @@ export function TelegramEditor({
       />
 
       <div className="tg-viewbar">
-        <div className="tg-segment" role="group" aria-label="Editor view">
+        <div className="tg-segment" role="group" aria-label="نمای ویرایشگر">
           <button
             type="button"
             aria-pressed={!showPreview}
@@ -181,22 +181,22 @@ export function TelegramEditor({
             }}
           >
             <Code2 size={14} />
-            Write HTML
+            نوشتن HTML
           </button>
           <button type="button" aria-pressed={showPreview} onClick={() => setShowPreview(true)}>
             <Eye size={14} />
-            Preview
+            پیش‌نمایش
           </button>
         </div>
 
         <label className="tg-direction">
-          <span>Source direction</span>
+          <span>جهت متن منبع</span>
           <select
-            aria-label="Source direction"
+            aria-label="جهت متن منبع"
             value={direction}
             onChange={(event) => setDirection(event.target.value)}
           >
-            <option value="auto">Auto</option>
+            <option value="auto">خودکار</option>
             <option value="rtl">RTL</option>
             <option value="ltr">LTR</option>
           </select>
@@ -224,7 +224,7 @@ export function TelegramEditor({
         </div>
 
         {showPreview && (
-          <aside className="tg-preview-pane" aria-label="Message preview">
+          <aside className="tg-preview-pane" aria-label="پیش‌نمایش پیام">
             <TelegramPreview text={text} format={textFormat} title={previewTitle} />
           </aside>
         )}
@@ -233,21 +233,21 @@ export function TelegramEditor({
       <footer className="tg-footer">
         <div className="tg-status">
           <p id={`${uid}-help`} className="tg-help">
-            HTML source · syntax highlighting · formatting inserts Telegram tags
+            منبع HTML · برجسته‌سازی نحو · قالب‌بندی تگ‌های Telegram را درج می‌کند
           </p>
           <p id={`${uid}-status`} className={overLimit ? 'tg-over' : undefined}>
             {rich
-              ? `${text.length} / ${RICH_TEXT_LIMIT} chars`
-              : `${text.length} / ${effectiveMaxLength} chars`}
+              ? `${text.length} / ${RICH_TEXT_LIMIT} نویسه`
+              : `${text.length} / ${effectiveMaxLength} نویسه`}
             <span className="tg-cursor">
-              {' '}· Ln {cursor.line}, Col {cursor.col} · {text.split('\n').length} lines
+              {' '}· سطر {cursor.line}، ستون {cursor.col} · {text.split('\n').length} خط
             </span>
           </p>
         </div>
 
         {(insertionError || overLimit) && (
           <p role="alert" className="tg-alert">
-            {insertionError || `This message exceeds its ${effectiveMaxLength}-character limit.`}
+            {insertionError || `این پیام از محدودیت ${effectiveMaxLength} نویسه‌ای فراتر رفته است.`}
           </p>
         )}
 
@@ -255,7 +255,7 @@ export function TelegramEditor({
           <div className="tg-footer-actions">
             <button type="button" className="tg-btn" onClick={() => setShowPreview((current) => !current)}>
               {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
-              {showPreview ? 'Hide preview' : 'Show preview'}
+              {showPreview ? 'پنهان کردن پیش‌نمایش' : 'نمایش پیش‌نمایش'}
             </button>
             <div className="tg-footer-buttons">
               {onCancel && (

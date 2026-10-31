@@ -33,14 +33,14 @@ export default function DownloadProxyFields({
           checked={enabled}
           onCheckedChange={(value) => onEnabled(value === true)}
         />
-        <Shield size={16} /> Use SOCKS5 proxy
-        <span className="muted">Optional</span>
+        <Shield size={16} /> استفاده از پروکسی SOCKS5
+        <span className="muted">اختیاری</span>
       </Label>
       {enabled ? (
         <>
           <div className="form-row proxy-address">
             <label>
-              Proxy host
+              میزبان پروکسی
               <Input
                 className="h-9 text-xs"
                 required
@@ -52,7 +52,7 @@ export default function DownloadProxyFields({
               />
             </label>
             <label>
-              Port
+              پورت
               <Input
                 className="h-9 text-xs"
                 required
@@ -66,7 +66,7 @@ export default function DownloadProxyFields({
           </div>
           <div className="form-row">
             <label>
-              Proxy username <span className="muted">(optional)</span>
+              نام کاربری پروکسی <span className="muted">(اختیاری)</span>
               <Input
                 className="h-9 text-xs"
                 value={config.username}
@@ -76,7 +76,7 @@ export default function DownloadProxyFields({
               />
             </label>
             <label>
-              Proxy password <span className="muted">(optional)</span>
+              رمز عبور پروکسی <span className="muted">(اختیاری)</span>
               <Input
                 className="h-9 text-xs"
                 type="password"
@@ -84,7 +84,7 @@ export default function DownloadProxyFields({
                 autoComplete="new-password"
                 maxLength={255}
                 placeholder={
-                  config.password_saved ? "Saved password" : "No authentication"
+                  config.password_saved ? "رمز ذخیره‌شده" : "بدون احراز هویت"
                 }
                 onChange={(e) =>
                   update({ password: e.target.value, clear_password: false })
@@ -103,13 +103,13 @@ export default function DownloadProxyFields({
                   })
                 }
               />
-              <span>Clear saved password</span>
+              <span>پاک کردن رمز ذخیره‌شده</span>
             </Label>
           )}
           <p className="hint">
-            Credentials are encrypted. Leave the password blank to keep it for
-            the same connection. Changing the host, port or username clears it.
-            Proxy settings are saved when you start a download.
+            اطلاعات ورود رمزنگاری می‌شود. برای حفظ رمز در همان اتصال، آن را خالی
+            بگذارید. با تغییر میزبان، پورت یا نام کاربری، رمز پاک می‌شود.
+            تنظیمات پروکسی هنگام شروع دانلود ذخیره می‌شود.
           </p>
           <div className="proxy-actions">
             <button
@@ -118,16 +118,17 @@ export default function DownloadProxyFields({
               disabled={!config.host.trim() || !config.port}
               onClick={onSave}
             >
-              Save proxy
+              ذخیره پروکسی
             </button>
             <button type="button" className="text-link" onClick={onRemove}>
-              <Trash2 size={14} /> Remove saved proxy
+              <Trash2 size={14} /> حذف پروکسی ذخیره‌شده
             </button>
           </div>
         </>
       ) : (
         <p className="hint">
-          This download connects directly. Enable to enter or reuse a proxy.
+          این دانلود مستقیم متصل می‌شود. برای وارد کردن یا استفادهٔ مجدد از
+          پروکسی، آن را فعال کنید.
         </p>
       )}
     </fieldset>

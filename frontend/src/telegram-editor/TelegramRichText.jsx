@@ -9,7 +9,7 @@ const Spoiler = ({ children }) => {
     <span
       role="button"
       tabIndex={0}
-      aria-label={revealed ? 'Hide spoiler' : 'Reveal spoiler'}
+      aria-label={revealed ? 'پنهان کردن اسپویلر' : 'نمایش اسپویلر'}
       aria-expanded={revealed}
       className="tg-rt-spoiler"
       onClick={(event) => {
@@ -125,7 +125,7 @@ const renderNode = (node, key, ctx = {}) => {
       return node.hasAttribute('expandable')
         ? (
           <details className="tg-rt-details">
-            <summary className="tg-rt-summary">Show quote</summary>
+            <summary className="tg-rt-summary">نمایش نقل‌قول</summary>
             <div>{renderChildren()}</div>
           </details>
         )
@@ -252,23 +252,23 @@ const renderNode = (node, key, ctx = {}) => {
       return <span className="tg-rt-figcaption">{renderChildren()}</span>
     case 'tg-emoji':
       return (
-        <span title={`Custom emoji ${node.getAttribute('emoji-id') || ''} (fallback preview)`} className="tg-rt-emoji">
+        <span title={`ایموجی سفارشی ${node.getAttribute('emoji-id') || ''} (پیش‌نمایش جایگزین)`} className="tg-rt-emoji">
           {node.textContent}
         </span>
       )
     case 'tg-time':
       return (
         <span
-          title={`Telegram date/time: ${node.getAttribute('unix') || ''}; format: ${node.getAttribute('format') || 'fallback'}`}
+          title={`تاریخ/زمان Telegram: ${node.getAttribute('unix') || ''}؛ قالب: ${node.getAttribute('format') || 'جایگزین'}`}
           className="tg-rt-time"
         >
           {node.textContent}
         </span>
       )
     default:
-      if (MEDIA_TAGS.includes(tag)) return <span className="tg-rt-unsupported">media not supported in preview</span>
+      if (MEDIA_TAGS.includes(tag)) return <span className="tg-rt-unsupported">رسانه در پیش‌نمایش پشتیبانی نمی‌شود</span>
       if (BUTTON_TAGS.includes(tag)) {
-        return <span className="tg-rt-unsupported">{renderChildren()} · button not supported in preview</span>
+        return <span className="tg-rt-unsupported">{renderChildren()} · دکمه در پیش‌نمایش پشتیبانی نمی‌شود</span>
       }
       return <>{renderChildren()}</>
   }

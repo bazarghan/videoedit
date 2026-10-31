@@ -58,7 +58,7 @@ export default function TelegramCover({
     try {
       await api(`/clips/${clip.id}/cover`, json("PUT", { time: timestamp }));
       await refresh();
-      toast("Cover update queued. It will be ready before you send this clip.");
+      toast("به‌روزرسانی کاور در صف قرار گرفت. پیش از ارسال این کلیپ آماده خواهد بود.");
     } catch (error) {
       onError((error as Error).message);
     } finally {
@@ -68,14 +68,14 @@ export default function TelegramCover({
   return (
     <section className="telegram-cover">
       <h3>
-        <Image size={17} /> Telegram cover
+        <Image size={17} /> کاور Telegram
       </h3>
       <div className="cover-picker">
         <div className="cover-image">
           {clip.has_cover ? (
             <img
               src={`/api/media/clip/${clip.id}/cover?v=${cover?.revision}`}
-              alt="Selected Telegram cover"
+              alt="کاور انتخاب‌شدهٔ Telegram"
             />
           ) : (
             <Image size={26} />
@@ -84,16 +84,23 @@ export default function TelegramCover({
         <div className="cover-settings">
           <span className="badge">
             {preparing
-              ? "Preparing cover…"
+              ? "در حال آماده‌سازی کاور…"
               : cover?.origin === "prerender"
-                ? "Saved before captions"
+                ? "ذخیره‌شده پیش از کپشن‌ها"
                 : cover?.mode === "manual"
-                  ? "Selected frame"
-                  : "Automatic frame"}
-            {cover && !preparing ? ` · ${cover.time.toFixed(2)}s` : ""}
+                  ? "فریم انتخاب‌شده"
+                  : "فریم خودکار"}
+            {cover && !preparing ? (
+              <>
+                {" · "}
+                <span dir="ltr">{cover.time.toFixed(2)}</span> ثانیه
+              </>
+            ) : (
+              ""
+            )}
           </span>
           <label>
-            Preview frame (seconds)
+            فریم پیش‌نمایش (ثانیه)
             <Input
               className="h-9 text-xs"
               type="number"
@@ -115,23 +122,23 @@ export default function TelegramCover({
               ) : (
                 <Image size={15} />
               )}{" "}
-              Use current frame
+              استفاده از فریم فعلی
             </button>
             <button
               className="text-link"
               disabled={busy || active}
               onClick={() => choose(null)}
             >
-              Automatic frame
+              فریم خودکار
             </button>
           </div>
         </div>
       </div>
       <p className="hint">
-        Every clip gets a cover automatically. Pause or seek the video above,
-        then use its current frame to choose your own. A cover saved in the
-        editor before rendering stays free of burned-in subtitles; choosing a
-        frame here reads it from the finished MP4.
+        برای هر کلیپ به‌طور خودکار یک کاور ساخته می‌شود. ویدیوی بالا را متوقف یا
+        جابه‌جا کنید و سپس با فریم فعلی آن کاور دلخواه خود را انتخاب کنید. کاوری
+        که در ویرایشگر و پیش از رندر ذخیره شود، بدون زیرنویس سوخته باقی می‌ماند؛
+        انتخاب فریم در اینجا آن را از MP4 نهایی می‌خواند.
       </p>
     </section>
   );

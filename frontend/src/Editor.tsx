@@ -13,6 +13,7 @@ import {
   Download,
   LoaderCircle,
   Check as CheckIcon,
+  ChevronDown,
   Move,
   Upload,
   Plus,
@@ -239,10 +240,10 @@ export default function Editor({
   const autoSubtitleBlocked =
     !project?.has_source || autoSubtitlesReady || autoSubtitleTooLong;
   const autoSubtitleTitle = autoSubtitlesReady
-    ? "Automatic subtitles already exist for this video. Edit them instead of using more tokens."
+    ? "زیرنویس خودکار برای این ویدیو ساخته شده است. به‌جای مصرف توکن بیشتر، آن‌ها را ویرایش کنید."
     : autoSubtitleTooLong
-      ? `Automatic subtitles are limited to ${autoSubtitleLimitMinutes} minutes. Raise the limit in Settings → Auto subtitles.`
-      : "Transcribe with ElevenLabs, translate with 9Router, and add English + Persian subtitles";
+      ? `زیرنویس خودکار تا ${autoSubtitleLimitMinutes} دقیقه محدود است. سقف را در تنظیمات → زیرنویس خودکار افزایش دهید.`
+      : "پیاده‌سازی گفتار با ElevenLabs، ترجمه با 9Router و افزودن زیرنویس انگلیسی + فارسی";
   const complete = !!project?.metadata.duration;
   const playbackReady = !!project?.has_source && complete;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
@@ -261,7 +262,7 @@ export default function Editor({
         }),
       );
       toast(
-        `${section === "subtitles" ? "Subtitle" : "Watermark"} defaults saved for new projects.`,
+        `${section === "subtitles" ? "تنظیمات پیش‌فرض زیرنویس" : "تنظیمات پیش‌فرض واترمارک"} برای پروژه‌های جدید ذخیره شد.`,
       );
     } catch (e) {
       onError((e as Error).message);
@@ -389,7 +390,7 @@ export default function Editor({
                 }
               : next.edit,
           );
-          toast("Automatic English and Persian subtitles are ready.");
+          toast("زیرنویس خودکار انگلیسی و فارسی آماده است.");
           const track = next.edit.subtitles.track_id;
           if (track)
             try {
@@ -674,7 +675,7 @@ export default function Editor({
         .play()
         .catch(() =>
           onError(
-            "This video cannot play in this browser. You can still render it.",
+            "این ویدیو در این مرورگر پخش نمی‌شود. همچنان می‌توانید آن را رندر کنید.",
           ),
         );
     }
@@ -701,7 +702,7 @@ export default function Editor({
         update("watermark", "kind", "image");
       }
       if (kind === "music") update("audio", "music_id", result.asset_id);
-      toast("File added to your project.");
+      toast("فایل به پروژه شما اضافه شد.");
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -717,7 +718,7 @@ export default function Editor({
         json("POST", { language: "en", translate: true }),
       );
       toast(
-        "Automatic subtitles queued. ElevenLabs will transcribe, then 9Router will translate to Persian.",
+        "زیرنویس خودکار در صف قرار گرفت. ElevenLabs گفتار را پیاده‌سازی می‌کند، سپس 9Router آن را به فارسی ترجمه می‌کند.",
       );
     } catch (e) {
       setAutoStarting(false);
@@ -736,8 +737,8 @@ export default function Editor({
       );
       toast(
         preview
-          ? "Six-second render preview queued. Open it below when it is ready."
-          : "Your clip is queued for rendering.",
+          ? "پیش‌نمایش شش‌ثانیه‌ای رندر در صف قرار گرفت. پس از آماده شدن، آن را در پایین باز کنید."
+          : "کلیپ شما در صف رندر قرار گرفت.",
       );
     } catch (e) {
       onError((e as Error).message);
@@ -759,7 +760,7 @@ export default function Editor({
         }),
       );
       setCoverCandidates(result.frames);
-      toast("Six clean Telegram cover frames generated without captions.");
+      toast("شش فریم تمیز کاور تلگرام بدون زیرنویس ساخته شد.");
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -781,7 +782,7 @@ export default function Editor({
       );
       setProject(await api<Project>(`/projects/${id}`));
       toast(
-        `Telegram cover saved at ${timecode(value)}. The next render uses this clean frame.`,
+        `کاور تلگرام در ${timecode(value)} ذخیره شد. رندر بعدی از این فریم تمیز استفاده می‌کند.`,
       );
     } catch (e) {
       onError((e as Error).message);
@@ -795,7 +796,7 @@ export default function Editor({
     try {
       await api(`/projects/${id}/cover-frame`, json("PUT", { time: null }));
       setProject(await api<Project>(`/projects/${id}`));
-      toast("Telegram cover selection cleared.");
+      toast("انتخاب کاور تلگرام پاک شد.");
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -946,7 +947,7 @@ export default function Editor({
   if (!project)
     return (
       <div className="page loading">
-        <LoaderCircle className="spin" /> Opening editor…
+        <LoaderCircle className="spin" /> در حال باز کردن ویرایشگر…
       </div>
     );
   if (!edit || !complete)
@@ -954,22 +955,22 @@ export default function Editor({
       <div className="page">
         <div className="page-heading compact">
           <div>
-            <span className="eyebrow">SETTING THE STAGE</span>
+            <span className="eyebrow">آماده‌سازی</span>
             <h1>{project.name}</h1>
-            <p>Your video is being downloaded and inspected.</p>
+            <p>ویدیوی شما در حال دانلود و بررسی است.</p>
           </div>
           <button className="secondary" onClick={onQueue}>
-            View activity <ArrowUpRight size={16} />
+            مشاهده فعالیت <ArrowUpRight size={16} />
           </button>
         </div>
         <div className="empty">
           <LoaderCircle className="spin" size={36} />
           <h3>
             {project.status === "failed"
-              ? "This import needs attention"
+              ? "این ورود به بررسی نیاز دارد"
               : project.status === "cancelled"
-                ? "Import cancelled"
-                : "Preparing your video"}
+                ? "ورود لغو شد"
+                : "آماده‌سازی ویدیوی شما"}
           </h3>
           {jobs
             .filter((j) => j.project_id === id && j.error)
@@ -983,10 +984,10 @@ export default function Editor({
             <div className="processing-job" key={j.id}>
               <span>
                 {j.kind === "download"
-                  ? "Downloading"
+                  ? "در حال دانلود"
                   : j.kind === "autosubtitle"
-                    ? "Creating English + Persian subtitles"
-                    : "Inspecting video"}{" "}
+                    ? "ساخت زیرنویس انگلیسی + فارسی"
+                    : "بررسی ویدیو"}{" "}
                 · {j.progress.toFixed(0)}%
               </span>
               <div className="meter">
@@ -995,7 +996,7 @@ export default function Editor({
             </div>
           ))}
           <button className="secondary" onClick={onQueue}>
-            Manage in Activity
+            مدیریت در فعالیت
           </button>
         </div>
       </div>
@@ -1065,7 +1066,7 @@ export default function Editor({
       cueIndex === index ? { ...cue, text: cueDraft.trim() } : cue,
     );
     setEditingCue(null);
-    await saveTrackCues(trackId, next, "Caption text saved.");
+    await saveTrackCues(trackId, next, "متن زیرنویس ذخیره شد.");
   }
   const captionLine = (fa: boolean) => {
     const scale = height / 1080;
@@ -1111,7 +1112,7 @@ export default function Editor({
           key={`${trackId}-${index}`}
           autoFocus
           className="caption-inline-input"
-          aria-label="Edit caption text on the video"
+          aria-label="ویرایش متن زیرنویس روی ویدیو"
           value={cueDraft}
           style={captionLine(fa)}
           onPointerDown={(event) => event.stopPropagation()}
@@ -1143,7 +1144,11 @@ export default function Editor({
           pointerEvents: playing ? "none" : "auto",
           cursor: playing ? "inherit" : "text",
         }}
-        title={playing ? undefined : "Pause and click to edit this caption"}
+        title={
+          playing
+            ? undefined
+            : "پخش را متوقف کنید و برای ویرایش این زیرنویس کلیک کنید"
+        }
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
@@ -1171,10 +1176,10 @@ export default function Editor({
     <div className="editor">
       <div className="editor-heading">
         <div>
-          <span className="eyebrow">VIDEO EDITOR</span>
+          <span className="eyebrow">ویرایشگر ویدیو</span>
           <Input
             className="project-name-input"
-            aria-label="Project name"
+            aria-label="نام پروژه"
             value={project.name}
             onChange={(e) => setProject({ ...project, name: e.target.value })}
             onBlur={() =>
@@ -1187,14 +1192,14 @@ export default function Editor({
           <span className="save-status">
             {saving ? (
               <>
-                <LoaderCircle className="spin" size={12} /> Saving
+                <LoaderCircle className="spin" size={12} /> در حال ذخیره
               </>
             ) : saved ? (
               <>
-                <CheckIcon size={12} /> Changes saved
+                <CheckIcon size={12} /> تغییرات ذخیره شد
               </>
             ) : (
-              "Editing"
+              "در حال ویرایش"
             )}
           </span>
         </div>
@@ -1215,12 +1220,12 @@ export default function Editor({
               <Sparkles size={15} />
             )}{" "}
             {autoSubtitleJob
-              ? `Auto subtitle ${autoSubtitleJob.progress.toFixed(0)}%`
+              ? `زیرنویس خودکار ${autoSubtitleJob.progress.toFixed(0)}%`
               : autoStarting
-                ? "Starting…"
+                ? "در حال شروع…"
                 : autoSubtitlesReady
-                  ? "Subtitles ready"
-                  : "Auto subtitle"}
+                  ? "زیرنویس آماده است"
+                  : "زیرنویس خودکار"}
           </button>
           <button
             className={"secondary " + (panelOpen ? "selected" : "")}
@@ -1229,9 +1234,9 @@ export default function Editor({
             aria-expanded={panelOpen}
             aria-controls="advanced-editor-panel"
             onClick={() => setPanelOpen((open) => !open)}
-            title="Open the advanced editing controls"
+            title="باز کردن کنترل‌های ویرایش پیشرفته"
           >
-            <SlidersHorizontal size={15} /> Advanced
+            <SlidersHorizontal size={15} /> پیشرفته
           </button>
           <button
             className="secondary"
@@ -1239,11 +1244,11 @@ export default function Editor({
             onClick={() => render(true)}
             title={
               activeRender
-                ? "A render is already running for this project."
-                : "Render a six-second preview"
+                ? "رندر این پروژه در حال انجام است."
+                : "رندر پیش‌نمایش شش‌ثانیه‌ای"
             }
           >
-            <Play size={15} /> Render preview
+            <Play size={15} /> پیش‌نمایش رندر
           </button>
           <button
             className="primary"
@@ -1257,14 +1262,14 @@ export default function Editor({
             onClick={() => render(false)}
             title={
               renderedCurrent
-                ? "This exact cut is already rendered. Open it from Recent exports, or change the clip first."
+                ? "این برش دقیق قبلاً رندر شده است. آن را از خروجی‌های اخیر باز کنید یا ابتدا کلیپ را تغییر دهید."
                 : activeRender
-                  ? "A render is already running for this project."
+                  ? "رندر این پروژه در حال انجام است."
                   : undefined
             }
           >
             {renderedCurrent ? <CheckIcon size={16} /> : <Download size={16} />}{" "}
-            {renderedCurrent ? "Already rendered" : "Render clip"}
+            {renderedCurrent ? "قبلاً رندر شده" : "رندر کلیپ"}
           </button>
         </div>
       </div>
@@ -1306,7 +1311,7 @@ export default function Editor({
                     setPlaying(false);
                     setPlaybackFailed(true);
                     onError(
-                      "This browser cannot play this video format. You can still trim and render it.",
+                      "این مرورگر نمی‌تواند این فرمت ویدیو را پخش کند. همچنان می‌توانید آن را برش دهید و رندر کنید.",
                     );
                   }}
                   onTimeUpdate={(e) => {
@@ -1335,20 +1340,20 @@ export default function Editor({
                   )}
                   <strong>
                     {active.length > 0
-                      ? "Preparing video"
-                      : "Video is not available"}
+                      ? "آماده‌سازی ویدیو"
+                      : "ویدیو در دسترس نیست"}
                   </strong>
                   <span>
                     {active.length > 0
-                      ? "Inspection is still running."
-                      : "The original source is missing or was removed."}
+                      ? "بررسی هنوز در حال انجام است."
+                      : "فایل منبع اصلی موجود نیست یا حذف شده است."}
                   </span>
                 </div>
               )}
               {playbackFailed && playbackReady && (
                 <div className="preview-pending preview-failed">
-                  <strong>This browser cannot play this video</strong>
-                  <span>You can still trim and render it.</span>
+                  <strong>این مرورگر نمی‌تواند این ویدیو را پخش کند</strong>
+                  <span>همچنان می‌توانید آن را برش دهید و رندر کنید.</span>
                 </div>
               )}
               {!style.soft &&
@@ -1400,7 +1405,7 @@ export default function Editor({
                     {wm.asset_id ? (
                       <img
                         src={`/api/media/asset/${wm.asset_id}`}
-                        alt="Watermark"
+                        alt="واترمارک"
                         onLoad={() =>
                           setFrameWidth(frame.current?.clientWidth || 800)
                         }
@@ -1469,7 +1474,7 @@ export default function Editor({
             </div>
             {cropDrag && (
               <span className="stage-hint">
-                <Move size={14} /> Drag the video to reframe
+                <Move size={14} /> برای کادربندی مجدد، ویدیو را بکشید
               </span>
             )}
           </div>
@@ -1520,15 +1525,15 @@ export default function Editor({
                   >
                     <button
                       className="trim-handle start"
-                      aria-label="Drag clip start"
+                      aria-label="کشیدن شروع کلیپ"
                       onPointerDown={(e) => dragHandle(e, "start")}
                     >
                       Ⅱ
                     </button>
-                    <span>SELECTED CLIP</span>
+                    <span>کلیپ انتخاب‌شده</span>
                     <button
                       className="trim-handle end"
-                      aria-label="Drag clip end"
+                      aria-label="کشیدن پایان کلیپ"
                       onPointerDown={(e) => dragHandle(e, "end")}
                     >
                       Ⅱ
@@ -1538,7 +1543,7 @@ export default function Editor({
                     className="playhead"
                     role="slider"
                     tabIndex={0}
-                    aria-label="Playhead position"
+                    aria-label="موقعیت نشانگر پخش"
                     aria-valuemin={0}
                     aria-valuemax={duration}
                     aria-valuenow={Number(time.toFixed(3))}
@@ -1559,13 +1564,13 @@ export default function Editor({
                 aria-pressed={!!refine}
                 title={
                   refine
-                    ? "Finish refining this selection"
-                    : "Cut again inside the current selection"
+                    ? "پایان دقیق‌سازی این انتخاب"
+                    : "برش دوباره درون انتخاب فعلی"
                 }
                 onClick={refine ? endRefine : startRefine}
               >
                 <Scissors />
-                {refine ? "Done" : "Refine"}
+                {refine ? "پایان" : "دقیق‌سازی"}
               </Button>
               <div className="timeline-zoom-controls">
                 <Button
@@ -1573,8 +1578,8 @@ export default function Editor({
                   variant="secondary"
                   size="icon"
                   className="zoom-button"
-                  aria-label="Zoom out"
-                  title="Zoom out"
+                  aria-label="کوچک‌نمایی"
+                  title="کوچک‌نمایی"
                   disabled={zoom <= 1}
                   onClick={() => nudgeZoom(1 / 1.6)}
                 >
@@ -1583,7 +1588,7 @@ export default function Editor({
                 <span
                   className="zoom-readout"
                   aria-live="polite"
-                  title="Scroll over the timeline to zoom"
+                  title="برای بزرگ‌نمایی، روی خط زمان اسکرول کنید"
                 >
                   {zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×
                 </span>
@@ -1592,8 +1597,8 @@ export default function Editor({
                   variant="secondary"
                   size="icon"
                   className="zoom-button"
-                  aria-label="Zoom in"
-                  title="Zoom in"
+                  aria-label="بزرگ‌نمایی"
+                  title="بزرگ‌نمایی"
                   disabled={zoom >= MAX_ZOOM}
                   onClick={() => nudgeZoom(1.6)}
                 >
@@ -1607,7 +1612,7 @@ export default function Editor({
                   disabled={zoom === 1}
                   onClick={() => zoomTo(1)}
                 >
-                  <Scan /> Fit
+                  <Scan /> تناسب
                 </Button>
               </div>
               <div className="timeline-bottom-actions">
@@ -1617,7 +1622,7 @@ export default function Editor({
                     root("start", Math.min(time, edit.end - MIN_CLIP))
                   }
                 >
-                  Set start here
+                  شروع از اینجا
                 </button>
                 <button
                   className="text-link"
@@ -1625,7 +1630,7 @@ export default function Editor({
                     root("end", Math.max(time, edit.start + MIN_CLIP))
                   }
                 >
-                  Set end here
+                  پایان در اینجا
                 </button>
               </div>
             </div>
@@ -1633,7 +1638,7 @@ export default function Editor({
           <div className="player-controls">
             <button
               className="icon-button"
-              aria-label={playing ? "Pause" : "Play"}
+              aria-label={playing ? "توقف" : "پخش"}
               disabled={!playbackReady}
               onClick={toggle}
             >
@@ -1646,7 +1651,7 @@ export default function Editor({
             <Volume2 size={16} />
             <RangeSlider
               className="volume-slider"
-              aria-label="Playback volume"
+              aria-label="صدای پخش"
               min={0}
               max={1}
               step={0.01}
@@ -1655,7 +1660,7 @@ export default function Editor({
             />
             <Select
               className="speed-select"
-              aria-label="Playback speed"
+              aria-label="سرعت پخش"
               value={String(speed)}
               onChange={(v) => setSpeed(Number(v))}
               options={[0.5, 0.75, 1, 1.25, 1.5, 2].map((v) => [
@@ -1665,15 +1670,15 @@ export default function Editor({
             />
             <button
               className={"icon-button " + (loop ? "selected" : "")}
-              aria-label="Loop selected clip"
-              title="Loop selected clip"
+              aria-label="پخش تکراری کلیپ انتخاب‌شده"
+              title="پخش تکراری کلیپ انتخاب‌شده"
               onClick={() => setLoop(!loop)}
             >
               <Repeat size={17} />
             </button>
             <button
               className="icon-button"
-              aria-label="Fullscreen"
+              aria-label="تمام‌صفحه"
               onClick={() => stage.current?.requestFullscreen()}
             >
               <Maximize size={17} />
@@ -1694,7 +1699,7 @@ export default function Editor({
                 {active
                   .map(
                     (j) =>
-                      `${j.kind === "render" ? "Rendering" : j.kind === "cover" ? "Cover" : "Processing"} · ${j.progress.toFixed(0)}%`,
+                      `${j.kind === "render" ? "در حال رندر" : j.kind === "cover" ? "کاور" : "در حال پردازش"} · ${j.progress.toFixed(0)}%`,
                   )
                   .join("  /  ")}
               </span>
@@ -1703,14 +1708,14 @@ export default function Editor({
           )}
           {rendered.length > 0 && (
             <div className="recent-renders">
-              <span className="eyebrow">RECENT EXPORTS</span>
+              <span className="eyebrow">خروجی‌های اخیر</span>
               {rendered.map((c) => (
                 <button key={c.id} onClick={() => onClip(c)}>
                   <Play size={15} />
                   <span>
                     {c.name}
                     <small>
-                      {c.preview ? "Rendered preview" : "Finished clip"} ·{" "}
+                      {c.preview ? "پیش‌نمایش رندر‌شده" : "کلیپ آماده"} ·{" "}
                       {clock(c.metadata.duration)}
                     </small>
                   </span>
@@ -1720,30 +1725,30 @@ export default function Editor({
             </div>
           )}
           <p className="editor-hint">
-            Edits apply to the final output frame. Use Render preview to check
-            the exact captions, crop, watermark, and audio.
+            تغییرات روی فریم نهایی خروجی اعمال می‌شوند. برای بررسی دقیق
+            زیرنویس‌ها، برش، واترمارک و صدا از پیش‌نمایش رندر استفاده کنید.
           </p>
         </div>
         {panelOpen && (
           <button
             className="edit-sidebar-backdrop"
             type="button"
-            aria-label="Close advanced editing controls"
+            aria-label="بستن کنترل‌های ویرایش پیشرفته"
             onClick={() => setPanelOpen(false)}
           />
         )}
         <aside
           id="advanced-editor-panel"
           className={"edit-sidebar" + (panelOpen ? " open" : "")}
-          aria-label="Advanced editing controls"
+          aria-label="کنترل‌های ویرایش پیشرفته"
           aria-hidden={!panelOpen}
         >
           <div className="edit-sidebar-head">
-            <span className="eyebrow">ADVANCED EDITING</span>
+            <span className="eyebrow">ویرایش پیشرفته</span>
             <button
               className="icon-button"
               type="button"
-              aria-label="Close advanced editing controls"
+              aria-label="بستن کنترل‌های ویرایش پیشرفته"
               onClick={() => setPanelOpen(false)}
             >
               <X size={16} />
@@ -1751,11 +1756,11 @@ export default function Editor({
           </div>
           <div className="edit-tabs">
             {[
-              { id: "clip", icon: Scissors, label: "Clip" },
-              { id: "subtitles", icon: Type, label: "Captions" },
-              { id: "crop", icon: Frame, label: "Frame" },
-              { id: "watermark", icon: Stamp, label: "Mark" },
-              { id: "audio", icon: Music, label: "Audio" },
+              { id: "clip", icon: Scissors, label: "برش" },
+              { id: "subtitles", icon: Type, label: "زیرنویس" },
+              { id: "crop", icon: Frame, label: "قاب" },
+              { id: "watermark", icon: Stamp, label: "نشان" },
+              { id: "audio", icon: Music, label: "صدا" },
             ].map((t) => (
               <button
                 key={t.id}
@@ -1770,13 +1775,24 @@ export default function Editor({
           <div className="edit-controls">
             {tab === "clip" && (
               <>
-                <div className="control-heading">
-                  <h2>Choose your moment</h2>
-                  <p>A precise cut. A story that moves.</p>
+                <div className="adv-intro">
+                  <div>
+                    <span className="adv-eyebrow">مدت کلیپ</span>
+                    <strong>{timecode(edit.end - edit.start)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="adv-text-button"
+                    aria-pressed={!!refine}
+                    onClick={refine ? endRefine : startRefine}
+                  >
+                    <Scissors size={13} />
+                    {refine ? "پایان دقیق‌سازی" : "برش دقیق‌تر"}
+                  </button>
                 </div>
                 <div className="form-row">
                   <label>
-                    Start (seconds)
+                    شروع (ثانیه)
                     <Num
                       value={edit.start}
                       min={0}
@@ -1786,7 +1802,7 @@ export default function Editor({
                     />
                   </label>
                   <label>
-                    End (seconds)
+                    پایان (ثانیه)
                     <Num
                       value={edit.end}
                       min={0}
@@ -1797,225 +1813,192 @@ export default function Editor({
                   </label>
                 </div>
                 {edit.end <= edit.start && (
-                  <p className="inline-error">End must be after start.</p>
+                  <p className="inline-error">پایان باید بعد از شروع باشد.</p>
                 )}
-                <div className="clip-summary">
-                  <span>Clip duration</span>
-                  <strong>{timecode(edit.end - edit.start)}</strong>
-                </div>
-                <Button
-                  type="button"
-                  variant={refine ? "default" : "secondary"}
-                  className="mt-2 w-full text-xs"
-                  aria-pressed={!!refine}
-                  onClick={refine ? endRefine : startRefine}
-                >
-                  <Scissors size={14} />
-                  {refine
-                    ? "Finish refining"
-                    : "Cut again inside this selection"}
-                </Button>
                 {refine && (
                   <p className="hint">
-                    The timeline is focused on {timecode(refine.start)} –{" "}
-                    {timecode(refine.end)}. Drag the handles or playhead to trim
-                    it further.
+                    خط زمان روی {timecode(refine.start)} –{" "}
+                    {timecode(refine.end)} متمرکز شده است. برای برش بیشتر،
+                    دستگیره‌ها یا نشانگر پخش را بکشید.
                   </p>
                 )}
-                <div className="control-divider" />
-                <h3>Export settings</h3>
-                <label>
-                  Output filename
-                  <Input
-                    className="h-8 text-xs"
-                    value={edit.filename}
-                    onChange={(e) => root("filename", e.target.value)}
-                    maxLength={100}
-                  />
-                </label>
-                <label>
-                  Quality
-                  <Select
-                    value={edit.quality}
-                    onChange={(v) => root("quality", v)}
-                    options={[
-                      ["fast", "Fast · recommended"],
-                      ["balanced", "Balanced"],
-                      ["high", "High quality"],
-                    ]}
-                  />
-                </label>
-                <div className="form-row">
+                <PanelSection
+                  icon={Download}
+                  title="تنظیمات خروجی"
+                  summary={`${edit.resolution}px · ${edit.fps} fps`}
+                >
                   <label>
-                    Resolution
+                    نام فایل خروجی
+                    <Input
+                      className="h-8 text-xs"
+                      value={edit.filename}
+                      onChange={(e) => root("filename", e.target.value)}
+                      maxLength={100}
+                    />
+                  </label>
+                  <label>
+                    کیفیت
                     <Select
-                      value={String(edit.resolution)}
-                      onChange={(v) => root("resolution", Number(v))}
+                      value={edit.quality}
+                      onChange={(v) => root("quality", v)}
                       options={[
-                        ["720", "720px · compact"],
-                        ["1080", "1080px · standard"],
-                        ["1920", "1920px · Full HD"],
+                        ["fast", "سریع · پیشنهادی"],
+                        ["balanced", "متعادل"],
+                        ["high", "کیفیت بالا"],
                       ]}
                     />
                   </label>
-                  <label>
-                    Frame rate
-                    <Select
-                      value={String(edit.fps)}
-                      onChange={(v) => root("fps", Number(v))}
-                      options={[24, 25, 30, 50, 60].map((v) => [
-                        String(v),
-                        `${v} fps`,
-                      ])}
-                    />
-                  </label>
-                </div>
-                <p className="hint">
-                  Resolution sets the longest edge. Exports are Telegram-ready
-                  MP4 videos with fast-start playback and an automatic cover.
-                  Open the finished clip to choose a different cover frame.
-                </p>
-                <div className="control-divider" />
-                <div className="section-heading">
-                  <h3>
-                    <Scan size={14} /> Telegram cover
-                  </h3>
-                  <span>Before captions are burned in</span>
-                </div>
-                <p className="hint">
-                  Choose a clean source frame now. The next render uses it as
-                  the Telegram cover, so the burned-in subtitles from the
-                  finished MP4 never appear in the cover.
-                </p>
-                <div className="cover-frame-picker">
-                  <div className="cover-frame-preview">
-                    {coverFrame ? (
-                      <img
-                        src={`/api/media/project/${id}/cover-frame?v=${coverFrame.revision}`}
-                        alt={`Selected Telegram cover at ${timecode(coverFrame.time)}`}
+                  <div className="form-row">
+                    <label>
+                      رزولوشن
+                      <Select
+                        value={String(edit.resolution)}
+                        onChange={(v) => root("resolution", Number(v))}
+                        options={[
+                          ["720", "720px · فشرده"],
+                          ["1080", "1080px · استاندارد"],
+                          ["1920", "1920px · Full HD"],
+                        ]}
                       />
-                    ) : (
-                      <span>
-                        <Scan size={22} />
-                        Automatic cover
-                      </span>
-                    )}
+                    </label>
+                    <label>
+                      نرخ فریم
+                      <Select
+                        value={String(edit.fps)}
+                        onChange={(v) => root("fps", Number(v))}
+                        options={[24, 25, 30, 50, 60].map((v) => [
+                          String(v),
+                          `${v} fps`,
+                        ])}
+                      />
+                    </label>
                   </div>
-                  <div className="cover-frame-copy">
-                    <strong>
-                      {coverFrame
-                        ? `Source frame ${timecode(coverFrame.time)}`
-                        : "No frame selected"}
-                    </strong>
-                    <small>
-                      {coverFrame
-                        ? "Clean of burned-in captions"
-                        : "The rendered frame will be used after render"}
-                    </small>
-                    <div className="cover-frame-buttons">
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={
-                          coverBusy ||
-                          !edit ||
-                          time < edit.start ||
-                          time >= edit.end
-                        }
-                        onClick={() => chooseCoverFrame(time)}
-                        title={
-                          !edit || time < edit.start || time >= edit.end
-                            ? "Move the playhead inside the current clip first"
-                            : "Save the frame at the current playhead"
-                        }
-                      >
-                        {coverBusy ? (
-                          <LoaderCircle className="spin" size={14} />
-                        ) : (
-                          <Frame size={14} />
-                        )}{" "}
-                        Use current frame
-                      </button>
-                      <button
-                        type="button"
-                        className="text-link"
-                        disabled={coverBusy}
-                        onClick={generateCoverFrames}
-                      >
-                        Generate 6 frames
-                      </button>
-                    </div>
-                    {coverFrame && (
-                      <button
-                        type="button"
-                        className="text-link"
-                        disabled={coverBusy}
-                        onClick={clearCoverFrame}
-                      >
-                        Clear selection
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {coverOutsideClip && (
-                  <p className="inline-error">
-                    This cover is outside the current cut and will be ignored.
-                    Choose a frame from the clip range.
+                </PanelSection>
+                <PanelSection
+                  icon={Scan}
+                  title="کاور تلگرام"
+                  summary={
+                    coverFrame
+                      ? `فریم ${timecode(coverFrame.time)}`
+                      : "کاور خودکار"
+                  }
+                >
+                  <p className="hint">
+                    فریم تمیز از منبع، بدون زیرنویس‌های چسبیده.
                   </p>
-                )}
-                {coverCandidates.length > 0 && (
-                  <div className="cover-frame-strip">
-                    {coverCandidates.map((candidate) => (
-                      <button
-                        key={`${candidate.url}-${candidate.time}`}
-                        type="button"
-                        className={
-                          "cover-frame-option " +
-                          (coverFrame &&
-                          Math.abs(coverFrame.time - candidate.time) < 0.002
-                            ? "selected"
-                            : "")
-                        }
-                        disabled={coverBusy}
-                        onClick={() => chooseCoverFrame(candidate.time)}
-                        title={`Use the frame at ${timecode(candidate.time)}`}
-                      >
+                  <div className="cover-frame-picker">
+                    <div className="cover-frame-preview">
+                      {coverFrame ? (
                         <img
-                          src={candidate.url}
-                          alt={`Cover candidate at ${timecode(candidate.time)}`}
+                          src={`/api/media/project/${id}/cover-frame?v=${coverFrame.revision}`}
+                          alt={`کاور انتخاب‌شده تلگرام در ${timecode(coverFrame.time)}`}
                         />
-                        <span>{timecode(candidate.time)}</span>
-                      </button>
-                    ))}
+                      ) : (
+                        <span>
+                          <Scan size={22} />
+                          کاور خودکار
+                        </span>
+                      )}
+                    </div>
+                    <div className="cover-frame-copy">
+                      <strong>
+                        {coverFrame
+                          ? `فریم منبع ${timecode(coverFrame.time)}`
+                          : "فریمی انتخاب نشده است"}
+                      </strong>
+                      <small>
+                        {coverFrame
+                          ? "بدون زیرنویس چسبیده"
+                          : "پس از رندر، فریم رندر‌شده استفاده می‌شود"}
+                      </small>
+                      <div className="cover-frame-buttons">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            coverBusy ||
+                            !edit ||
+                            time < edit.start ||
+                            time >= edit.end
+                          }
+                          onClick={() => chooseCoverFrame(time)}
+                          title={
+                            !edit || time < edit.start || time >= edit.end
+                              ? "ابتدا نشانگر پخش را داخل کلیپ فعلی ببرید"
+                              : "ذخیره فریم در موقعیت فعلی نشانگر پخش"
+                          }
+                        >
+                          {coverBusy ? (
+                            <LoaderCircle className="spin" size={14} />
+                          ) : (
+                            <Frame size={14} />
+                          )}{" "}
+                          استفاده از فریم فعلی
+                        </button>
+                        <button
+                          type="button"
+                          className="text-link"
+                          disabled={coverBusy}
+                          onClick={generateCoverFrames}
+                        >
+                          ساخت ۶ فریم
+                        </button>
+                      </div>
+                      {coverFrame && (
+                        <button
+                          type="button"
+                          className="text-link"
+                          disabled={coverBusy}
+                          onClick={clearCoverFrame}
+                        >
+                          پاک کردن انتخاب
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-                <div className="source-info">
-                  <span className="eyebrow">SOURCE VIDEO</span>
-                  <p>
-                    {project.metadata.width} × {project.metadata.height} ·{" "}
-                    {project.metadata.video_codec?.toUpperCase()}
-                  </p>
-                  <small>
-                    {project.metadata.audio.length} audio{" "}
-                    {project.metadata.audio.length === 1 ? "track" : "tracks"} ·{" "}
-                    {project.subtitles?.length || 0} subtitle tracks
-                  </small>
-                </div>
+                  {coverOutsideClip && (
+                    <p className="inline-error">
+                      این کاور خارج از برش فعلی است و نادیده گرفته می‌شود. فریمی
+                      از محدوده کلیپ انتخاب کنید.
+                    </p>
+                  )}
+                  {coverCandidates.length > 0 && (
+                    <div className="cover-frame-strip">
+                      {coverCandidates.map((candidate) => (
+                        <button
+                          key={`${candidate.url}-${candidate.time}`}
+                          type="button"
+                          className={
+                            "cover-frame-option " +
+                            (coverFrame &&
+                            Math.abs(coverFrame.time - candidate.time) < 0.002
+                              ? "selected"
+                              : "")
+                          }
+                          disabled={coverBusy}
+                          onClick={() => chooseCoverFrame(candidate.time)}
+                          title={`استفاده از فریم ${timecode(candidate.time)}`}
+                        >
+                          <img
+                            src={candidate.url}
+                            alt={`گزینه کاور در ${timecode(candidate.time)}`}
+                          />
+                          <span>{timecode(candidate.time)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </PanelSection>
+                <p className="adv-footnote">
+                  {project.metadata.width}×{project.metadata.height} ·{" "}
+                  {project.metadata.video_codec?.toUpperCase()} ·{" "}
+                  {project.metadata.audio.length} صدا ·{" "}
+                  {project.subtitles?.length || 0} زیرنویس
+                </p>
               </>
             )}
             {tab === "subtitles" && (
               <>
-                <div className="control-heading">
-                  <h2>Make every word count</h2>
-                  <p>Readable captions, right where you want them.</p>
-                </div>
-                <button
-                  className="secondary wide"
-                  disabled={savingDefaults}
-                  onClick={() => saveAsDefaults("subtitles")}
-                >
-                  <Save size={16} /> Save subtitle settings as defaults
-                </button>
                 <button
                   className="secondary wide"
                   disabled={
@@ -2035,308 +2018,322 @@ export default function Editor({
                     <Sparkles size={16} />
                   )}{" "}
                   {autoSubtitleJob
-                    ? `Transcribing & translating ${autoSubtitleJob.progress.toFixed(0)}%`
+                    ? `پیاده‌سازی و ترجمه ${autoSubtitleJob.progress.toFixed(0)}%`
                     : autoStarting
-                      ? "Starting automatic subtitles…"
+                      ? "در حال شروع زیرنویس خودکار…"
                       : autoSubtitlesReady
-                        ? "Automatic subtitles are ready"
-                        : "Auto subtitle (English + فارسی)"}
+                        ? "زیرنویس خودکار آماده است"
+                        : "زیرنویس خودکار (انگلیسی + فارسی)"}
                 </button>
                 {autoSubtitlesReady && (
                   <p className="hint">
-                    Automatic subtitles already exist for this video. Edit the
-                    tracks below or upload replacements instead of spending more
-                    ElevenLabs and 9Router tokens.
+                    زیرنویس خودکار آماده است؛ مسیرها را ویرایش کنید.
                   </p>
                 )}
                 {autoSubtitleTooLong && (
                   <p className="inline-error">
-                    This video is {clock(duration)} long. Automatic subtitles
-                    are limited to {autoSubtitleLimitMinutes} minutes; raise the
-                    limit in Settings → Auto subtitles or import a shorter
-                    video.
+                    این ویدیو {clock(duration)} است. زیرنویس خودکار تا{" "}
+                    {autoSubtitleLimitMinutes} دقیقه محدود است؛ سقف را در
+                    تنظیمات → زیرنویس خودکار افزایش دهید یا ویدیوی کوتاه‌تری
+                    وارد کنید.
                   </p>
                 )}
-                <p className="hint">
-                  ElevenLabs transcribes the voice, then the 9Router AI model
-                  translates it to Persian. Both tracks use Viditor's layout:
-                  English above, Persian below in yellow.
-                </p>
-                <label>
-                  English / main subtitle track
-                  <Select
-                    value={style.track_id}
-                    onChange={(v) => update("subtitles", "track_id", v)}
-                    options={[
-                      ["", "No main subtitles"],
-                      ...(project.subtitles || []).map((t) => [
-                        t.id,
-                        `${t.title}${!t.editable ? " (image — unsupported)" : ""}`,
-                      ]),
-                    ]}
-                  />
-                </label>
-                <label>
-                  Persian subtitle track
-                  <Select
-                    value={style.fa_track_id}
-                    onChange={(v) => update("subtitles", "fa_track_id", v)}
-                    options={[
-                      ["", "No Persian subtitles"],
-                      ...(project.subtitles || []).map((t) => [
-                        t.id,
-                        `${t.title}${!t.editable ? " (image — unsupported)" : ""}`,
-                      ]),
-                    ]}
-                  />
-                </label>
-                <div className="form-row">
-                  <FileButton
-                    label="Upload English"
-                    accept=".srt,.ass,.ssa,.vtt"
-                    disabled={busy}
-                    onFile={(f) => upload("subtitles", f, "main")}
-                  />
-                  <FileButton
-                    label="Upload Persian"
-                    accept=".srt,.ass,.ssa,.vtt"
-                    disabled={busy}
-                    onFile={(f) => upload("subtitles", f, "fa")}
-                  />
-                </div>
-                <Check
-                  checked={style.burn}
-                  onChange={(v) => update("subtitles", "burn", v)}
+                <PanelSection
+                  icon={Type}
+                  title="مسیرهای زیرنویس"
+                  summary={`${(project.subtitles || []).length} مسیر`}
+                  defaultOpen
                 >
-                  Permanently add both captions to the export
-                </Check>
-                <Check
-                  checked={style.soft}
-                  onChange={(v) => update("subtitles", "soft", v)}
-                >
-                  Use the video's original soft subtitles
-                </Check>
-                <p className="hint">
-                  Off by default. When a video already has embedded soft
-                  subtitles, VideoEdit ignores them and uses the editable
-                  English and Persian tracks above for the preview and export.
-                  Turn this on to keep the source soft-subtitle track instead
-                  (preview support depends on the browser; exports use an MP4
-                  text track).
-                </p>
-                {project.subtitles
-                  ?.find((t) => t.id === style.track_id)
-                  ?.codec.match(/ass|ssa/) && (
-                  <>
-                    <Check
-                      checked={style.preserve_ass}
-                      onChange={(v) => update("subtitles", "preserve_ass", v)}
-                    >
-                      Preserve original ASS styling
-                    </Check>
-                    <p className="hint">
-                      Original ASS styling is shown exactly in rendered
-                      previews. Cue text edits and custom style apply when this
-                      option is off.
-                    </p>
-                  </>
-                )}
-                <div className="control-divider" />
-                <label>
-                  Font family
-                  <Select
-                    value={style.font}
-                    options={fonts}
-                    onChange={(v) => update("subtitles", "font", v)}
-                  />
-                </label>
-                <Check
-                  checked={style.bold}
-                  onChange={(v) => update("subtitles", "bold", v)}
-                >
-                  Bold
-                </Check>
-                <Slider
-                  label="Font size"
-                  value={style.size}
-                  min={12}
-                  max={160}
-                  step={1}
-                  suffix="px"
-                  onChange={(v) => update("subtitles", "size", v)}
-                />
-                <div className="form-row">
                   <label>
-                    Text color
-                    <Color
-                      value={style.color}
-                      name="Text color"
-                      onChange={(v) => update("subtitles", "color", v)}
+                    مسیر زیرنویس انگلیسی / اصلی
+                    <Select
+                      value={style.track_id}
+                      onChange={(v) => update("subtitles", "track_id", v)}
+                      options={[
+                        ["", "بدون زیرنویس اصلی"],
+                        ...(project.subtitles || []).map((t) => [
+                          t.id,
+                          `${t.title}${!t.editable ? " (تصویری — پشتیبانی نمی‌شود)" : ""}`,
+                        ]),
+                      ]}
                     />
                   </label>
                   <label>
-                    Outline color
-                    <Color
-                      value={style.outline_color}
-                      name="Outline color"
-                      onChange={(v) => update("subtitles", "outline_color", v)}
+                    مسیر زیرنویس فارسی
+                    <Select
+                      value={style.fa_track_id}
+                      onChange={(v) => update("subtitles", "fa_track_id", v)}
+                      options={[
+                        ["", "بدون زیرنویس فارسی"],
+                        ...(project.subtitles || []).map((t) => [
+                          t.id,
+                          `${t.title}${!t.editable ? " (تصویری — پشتیبانی نمی‌شود)" : ""}`,
+                        ]),
+                      ]}
                     />
                   </label>
-                </div>
-                <div className="form-row">
-                  <label>
-                    Outline
-                    <Num
-                      value={style.outline}
-                      min={0}
-                      max={12}
-                      onChange={(v) => update("subtitles", "outline", v)}
+                  <div className="form-row">
+                    <FileButton
+                      label="بارگذاری انگلیسی"
+                      accept=".srt,.ass,.ssa,.vtt"
+                      disabled={busy}
+                      onFile={(f) => upload("subtitles", f, "main")}
                     />
-                  </label>
-                  <label>
-                    Shadow
-                    <Num
-                      value={style.shadow}
-                      min={0}
-                      max={12}
-                      onChange={(v) => update("subtitles", "shadow", v)}
+                    <FileButton
+                      label="بارگذاری فارسی"
+                      accept=".srt,.ass,.ssa,.vtt"
+                      disabled={busy}
+                      onFile={(f) => upload("subtitles", f, "fa")}
                     />
-                  </label>
-                </div>
-                <Check
-                  checked={style.box}
-                  onChange={(v) => update("subtitles", "box", v)}
+                  </div>
+                  <Check
+                    checked={style.burn}
+                    onChange={(v) => update("subtitles", "burn", v)}
+                  >
+                    افزودن دائمی هر دو زیرنویس به خروجی
+                  </Check>
+                  <Check
+                    checked={style.soft}
+                    onChange={(v) => update("subtitles", "soft", v)}
+                  >
+                    استفاده از زیرنویس‌های نرم اصلی ویدیو
+                  </Check>
+                  <p className="hint">
+                    برای استفاده از زیرنویس نرم خود ویدیو به‌جای مسیرهای بالا،
+                    این گزینه را روشن کنید.
+                  </p>
+                  {project.subtitles
+                    ?.find((t) => t.id === style.track_id)
+                    ?.codec.match(/ass|ssa/) && (
+                    <>
+                      <Check
+                        checked={style.preserve_ass}
+                        onChange={(v) => update("subtitles", "preserve_ass", v)}
+                      >
+                        حفظ استایل اصلی ASS
+                      </Check>
+                      <p className="hint">
+                        استایل اصلی ASS حفظ می‌شود؛ ویرایش استایل سفارشی فقط با
+                        خاموش بودن این گزینه اعمال می‌شود.
+                      </p>
+                    </>
+                  )}
+                </PanelSection>
+                <PanelSection
+                  icon={Type}
+                  title="استایل انگلیسی"
+                  summary={`${style.font} · ${style.size}px`}
                 >
-                  Background box
-                </Check>
-                {style.box && (
+                  <label>
+                    خانواده فونت
+                    <Select
+                      value={style.font}
+                      options={fonts}
+                      onChange={(v) => update("subtitles", "font", v)}
+                    />
+                  </label>
+                  <Check
+                    checked={style.bold}
+                    onChange={(v) => update("subtitles", "bold", v)}
+                  >
+                    ضخیم
+                  </Check>
                   <Slider
-                    label="Box opacity"
-                    value={style.box_opacity}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    suffix=""
-                    onChange={(v) => update("subtitles", "box_opacity", v)}
+                    label="اندازه فونت"
+                    value={style.size}
+                    min={12}
+                    max={160}
+                    step={1}
+                    suffix="px"
+                    onChange={(v) => update("subtitles", "size", v)}
                   />
-                )}
-                <div className="form-row">
-                  <label>
-                    Position
-                    <Select
-                      value={style.position}
-                      options={["bottom", "middle", "top"].map((v) => [v, v])}
-                      onChange={(v) => update("subtitles", "position", v)}
-                    />
-                  </label>
-                  <label>
-                    Alignment
-                    <Select
-                      value={style.align}
-                      options={["left", "center", "right"].map((v) => [v, v])}
-                      onChange={(v) => update("subtitles", "align", v)}
-                    />
-                  </label>
-                </div>
-                <div className="form-row">
-                  <label>
-                    Margin (px)
-                    <Num
-                      value={style.margin}
+                  <div className="form-row">
+                    <label>
+                      رنگ متن
+                      <Color
+                        value={style.color}
+                        name="رنگ متن"
+                        onChange={(v) => update("subtitles", "color", v)}
+                      />
+                    </label>
+                    <label>
+                      رنگ حاشیه
+                      <Color
+                        value={style.outline_color}
+                        name="رنگ حاشیه"
+                        onChange={(v) =>
+                          update("subtitles", "outline_color", v)
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      حاشیه
+                      <Num
+                        value={style.outline}
+                        min={0}
+                        max={12}
+                        onChange={(v) => update("subtitles", "outline", v)}
+                      />
+                    </label>
+                    <label>
+                      سایه
+                      <Num
+                        value={style.shadow}
+                        min={0}
+                        max={12}
+                        onChange={(v) => update("subtitles", "shadow", v)}
+                      />
+                    </label>
+                  </div>
+                  <Check
+                    checked={style.box}
+                    onChange={(v) => update("subtitles", "box", v)}
+                  >
+                    کادر پس‌زمینه
+                  </Check>
+                  {style.box && (
+                    <Slider
+                      label="شفافیت کادر"
+                      value={style.box_opacity}
                       min={0}
-                      max={400}
-                      step={1}
-                      onChange={(v) => update("subtitles", "margin", v)}
+                      max={1}
+                      step={0.01}
+                      suffix=""
+                      onChange={(v) => update("subtitles", "box_opacity", v)}
                     />
-                  </label>
-                  <label>
-                    Timing offset (s)
-                    <Num
-                      value={style.offset}
-                      min={-600}
-                      max={600}
-                      step={0.1}
-                      onChange={(v) => update("subtitles", "offset", v)}
-                    />
-                  </label>
-                </div>
-                <div className="control-divider" />
-                <div className="section-heading">
-                  <h3>
-                    <Languages size={14} /> Persian caption style
-                  </h3>
-                  <span>Viditor layout</span>
-                </div>
-                <label>
-                  Persian font
-                  <Select
-                    value={style.fa_font}
-                    options={fonts}
-                    onChange={(v) => update("subtitles", "fa_font", v)}
-                  />
-                </label>
-                <Check
-                  checked={style.fa_bold}
-                  onChange={(v) => update("subtitles", "fa_bold", v)}
+                  )}
+                </PanelSection>
+                <PanelSection
+                  icon={Frame}
+                  title="چیدمان"
+                  summary={`${style.position === "bottom" ? "پایین" : style.position === "middle" ? "میانه" : "بالا"} · ${style.align === "left" ? "چپ" : style.align === "center" ? "وسط" : "راست"}`}
                 >
-                  Bold Persian text
-                </Check>
-                <Slider
-                  label="Persian font size"
-                  value={style.fa_size}
-                  min={12}
-                  max={160}
-                  step={1}
-                  suffix="px"
-                  onChange={(v) => update("subtitles", "fa_size", v)}
-                />
-                <div className="form-row">
+                  <div className="form-row">
+                    <label>
+                      موقعیت
+                      <Select
+                        value={style.position}
+                        options={[
+                          ["bottom", "پایین"],
+                          ["middle", "میانه"],
+                          ["top", "بالا"],
+                        ]}
+                        onChange={(v) => update("subtitles", "position", v)}
+                      />
+                    </label>
+                    <label>
+                      تراز
+                      <Select
+                        value={style.align}
+                        options={[
+                          ["left", "چپ"],
+                          ["center", "وسط"],
+                          ["right", "راست"],
+                        ]}
+                        onChange={(v) => update("subtitles", "align", v)}
+                      />
+                    </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      حاشیه (px)
+                      <Num
+                        value={style.margin}
+                        min={0}
+                        max={400}
+                        step={1}
+                        onChange={(v) => update("subtitles", "margin", v)}
+                      />
+                    </label>
+                    <label>
+                      انحراف زمان (ثانیه)
+                      <Num
+                        value={style.offset}
+                        min={-600}
+                        max={600}
+                        step={0.1}
+                        onChange={(v) => update("subtitles", "offset", v)}
+                      />
+                    </label>
+                  </div>
+                </PanelSection>
+                <PanelSection
+                  icon={Languages}
+                  title="استایل فارسی"
+                  summary={`${style.fa_font} · ${style.fa_size}px`}
+                >
                   <label>
-                    Persian color
-                    <Color
-                      value={style.fa_color}
-                      name="Persian text color"
-                      onChange={(v) => update("subtitles", "fa_color", v)}
+                    فونت فارسی
+                    <Select
+                      value={style.fa_font}
+                      options={fonts}
+                      onChange={(v) => update("subtitles", "fa_font", v)}
                     />
                   </label>
-                  <label>
-                    Persian outline
-                    <Color
-                      value={style.fa_outline_color}
-                      name="Persian outline color"
-                      onChange={(v) =>
-                        update("subtitles", "fa_outline_color", v)
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="form-row">
-                  <label>
-                    Persian outline width
-                    <Num
-                      value={style.fa_outline}
-                      min={0}
-                      max={12}
-                      onChange={(v) => update("subtitles", "fa_outline", v)}
-                    />
-                  </label>
-                  <label>
-                    Gap above Persian (px)
-                    <Num
-                      value={style.gap}
-                      min={0}
-                      max={200}
-                      onChange={(v) => update("subtitles", "gap", v)}
-                    />
-                  </label>
-                </div>
+                  <Check
+                    checked={style.fa_bold}
+                    onChange={(v) => update("subtitles", "fa_bold", v)}
+                  >
+                    متن فارسی ضخیم
+                  </Check>
+                  <Slider
+                    label="اندازه فونت فارسی"
+                    value={style.fa_size}
+                    min={12}
+                    max={160}
+                    step={1}
+                    suffix="px"
+                    onChange={(v) => update("subtitles", "fa_size", v)}
+                  />
+                  <div className="form-row">
+                    <label>
+                      رنگ فارسی
+                      <Color
+                        value={style.fa_color}
+                        name="رنگ متن فارسی"
+                        onChange={(v) => update("subtitles", "fa_color", v)}
+                      />
+                    </label>
+                    <label>
+                      حاشیه فارسی
+                      <Color
+                        value={style.fa_outline_color}
+                        name="رنگ حاشیه فارسی"
+                        onChange={(v) =>
+                          update("subtitles", "fa_outline_color", v)
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      ضخامت حاشیه فارسی
+                      <Num
+                        value={style.fa_outline}
+                        min={0}
+                        max={12}
+                        onChange={(v) => update("subtitles", "fa_outline", v)}
+                      />
+                    </label>
+                    <label>
+                      فاصله بالای فارسی (px)
+                      <Num
+                        value={style.gap}
+                        min={0}
+                        max={200}
+                        onChange={(v) => update("subtitles", "gap", v)}
+                      />
+                    </label>
+                  </div>
+                </PanelSection>
                 {(style.track_id || style.fa_track_id) && (
-                  <>
-                    <div className="control-divider" />
-                    <div className="section-heading">
-                      <h3>Edit caption text</h3>
-                      <span>{cues.length} cues</span>
-                    </div>
+                  <PanelSection
+                    icon={Type}
+                    title="ویرایش متن"
+                    summary={`${cues.length} خط`}
+                  >
                     {style.track_id && style.fa_track_id && (
                       <div className="form-actions">
                         <button
@@ -2348,7 +2345,7 @@ export default function Editor({
                             setCuePage(0);
                           }}
                         >
-                          English track
+                          مسیر انگلیسی
                         </button>
                         <button
                           className={cueRole === "fa" ? "primary" : "secondary"}
@@ -2357,7 +2354,7 @@ export default function Editor({
                             setCuePage(0);
                           }}
                         >
-                          فارسی track
+                          مسیر فارسی
                         </button>
                       </div>
                     )}
@@ -2371,7 +2368,7 @@ export default function Editor({
                               <div className="cue-times">
                                 <Input
                                   className="h-7 px-1.5 text-[10px]"
-                                  aria-label={`Cue ${i + 1} start`}
+                                  aria-label={`شروع زیرنویس ${i + 1}`}
                                   type="number"
                                   step={0.001}
                                   min={0}
@@ -2392,7 +2389,7 @@ export default function Editor({
                                 <span>→</span>
                                 <Input
                                   className="h-7 px-1.5 text-[10px]"
-                                  aria-label={`Cue ${i + 1} end`}
+                                  aria-label={`پایان زیرنویس ${i + 1}`}
                                   type="number"
                                   step={0.001}
                                   min={0}
@@ -2412,7 +2409,7 @@ export default function Editor({
                                 />
                                 <button
                                   className="icon-button"
-                                  aria-label="Delete cue"
+                                  aria-label="حذف زیرنویس"
                                   onClick={() =>
                                     setCues((old) =>
                                       old.filter((_, n) => n !== i),
@@ -2424,7 +2421,7 @@ export default function Editor({
                               </div>
                               <Textarea
                                 className="min-h-14 text-[11px]"
-                                aria-label={`Cue ${i + 1} text`}
+                                aria-label={`متن زیرنویس ${i + 1}`}
                                 value={cue.text}
                                 onFocus={() => seek(cue.start + style.offset)}
                                 onChange={(e) =>
@@ -2448,7 +2445,7 @@ export default function Editor({
                           disabled={cuePage === 0}
                           onClick={() => setCuePage(cuePage - 1)}
                         >
-                          Previous
+                          قبلی
                         </button>
                         <small>
                           {cuePage + 1} / {Math.ceil(cues.length / 20)}
@@ -2458,7 +2455,7 @@ export default function Editor({
                           disabled={(cuePage + 1) * 20 >= cues.length}
                           onClick={() => setCuePage(cuePage + 1)}
                         >
-                          Next
+                          بعدی
                         </button>
                       </div>
                     )}
@@ -2471,12 +2468,12 @@ export default function Editor({
                             {
                               start: time,
                               end: Math.min(duration, time + 2),
-                              text: "New caption",
+                              text: "زیرنویس جدید",
                             },
                           ])
                         }
                       >
-                        <Plus size={14} /> Add cue
+                        <Plus size={14} /> افزودن زیرنویس
                       </button>
                       <button
                         className="primary"
@@ -2486,28 +2483,31 @@ export default function Editor({
                           saveTrackCues(
                             listTrackId,
                             cues,
-                            "Caption text saved.",
+                            "متن زیرنویس ذخیره شد.",
                           )
                         }
                       >
-                        <Save size={14} /> Save cues
+                        <Save size={14} /> ذخیره زیرنویس‌ها
                       </button>
                     </div>
                     <p className="hint">
-                      To edit on the video itself, pause playback and click a
-                      caption line. Press Ctrl/⌘+Enter or click elsewhere to
-                      save.
+                      برای ویرایش روی ویدیو، پخش را متوقف کنید و روی خط زیرنویس
+                      کلیک کنید.
                     </p>
-                  </>
+                  </PanelSection>
                 )}
+                <button
+                  type="button"
+                  className="adv-save-default"
+                  disabled={savingDefaults}
+                  onClick={() => saveAsDefaults("subtitles")}
+                >
+                  <Save size={13} /> ذخیره استایل فعلی به‌عنوان پیش‌فرض
+                </button>
               </>
             )}
             {tab === "crop" && (
               <>
-                <div className="control-heading">
-                  <h2>Find your frame</h2>
-                  <p>Made for wherever you’re sharing.</p>
-                </div>
                 <div className="aspect-options">
                   {["original", "16:9", "9:16", "1:1", "4:5"].map((v) => (
                     <button
@@ -2524,89 +2524,87 @@ export default function Editor({
                                 Number(v.split(":")[1]),
                         }}
                       />
-                      {v === "original" ? "Original" : v}
+                      {v === "original" ? "اصلی" : v}
                     </button>
                   ))}
                 </div>
                 <label>
-                  Framing
+                  کادربندی
                   <Select
                     value={edit.crop.mode}
                     options={[
-                      ["fill", "Fill frame · crop edges"],
-                      ["fit", "Fit entire video · black padding"],
+                      ["fill", "پر کردن قاب · برش لبه‌ها"],
+                      ["fit", "جای‌گذاری کامل ویدیو · حاشیه سیاه"],
                     ]}
                     onChange={(v) => update("crop", "mode", v)}
                   />
                 </label>
-                <button
-                  className={"secondary wide " + (cropDrag ? "selected" : "")}
-                  onClick={() => setCropDrag(!cropDrag)}
+                <PanelSection
+                  icon={Move}
+                  title="تنظیم دستی"
+                  summary={`${Math.round(edit.crop.x * 100)}% · ${Math.round(edit.crop.y * 100)}%`}
                 >
-                  <Move size={16} />
-                  {cropDrag ? "Finish positioning" : "Drag to reposition crop"}
-                </button>
-                <Slider
-                  label="Horizontal position"
-                  value={edit.crop.x}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onChange={(v) => update("crop", "x", v)}
-                />
-                <Slider
-                  label="Vertical position"
-                  value={edit.crop.y}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onChange={(v) => update("crop", "y", v)}
-                />
-                <button
-                  className="text-link"
-                  onClick={() => {
-                    update("crop", "x", 0.5);
-                    update("crop", "y", 0.5);
-                  }}
-                >
-                  Center the frame
-                </button>
-                <div className="note">
-                  <Frame size={17} />
-                  <span>
-                    Captions and watermarks stay relative to this output frame,
-                    even when you crop.
-                  </span>
-                </div>
+                  <button
+                    className={"secondary wide " + (cropDrag ? "selected" : "")}
+                    onClick={() => setCropDrag(!cropDrag)}
+                  >
+                    <Move size={16} />
+                    {cropDrag ? "پایان جابه‌جایی" : "جابه‌جایی با کشیدن"}
+                  </button>
+                  <Slider
+                    label="موقعیت افقی"
+                    value={edit.crop.x}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={(v) => update("crop", "x", v)}
+                  />
+                  <Slider
+                    label="موقعیت عمودی"
+                    value={edit.crop.y}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={(v) => update("crop", "y", v)}
+                  />
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      update("crop", "x", 0.5);
+                      update("crop", "y", 0.5);
+                    }}
+                  >
+                    وسط‌چین کردن قاب
+                  </button>
+                </PanelSection>
+                <p className="adv-footnote">
+                  زیرنویس و واترمارک نسبت به همین قاب خروجی می‌مانند.
+                </p>
               </>
             )}
             {tab === "watermark" && (
               <>
-                <div className="control-heading">
-                  <h2>Leave your signature</h2>
-                  <p>A small mark that makes it yours.</p>
-                </div>
-                <button
-                  className="secondary wide"
-                  disabled={savingDefaults}
-                  onClick={() => saveAsDefaults("watermark")}
-                >
-                  <Save size={16} /> Save watermark settings as defaults
-                </button>
                 <label>
-                  Watermark type
+                  نوع واترمارک
                   <Select
                     value={wm.kind}
                     options={[
-                      ["none", "No watermark"],
-                      ["text", "Text"],
-                      ["image", "Image"],
+                      ["none", "بدون واترمارک"],
+                      ["text", "متن"],
+                      ["image", "تصویر"],
                     ]}
                     onChange={(v) => update("watermark", "kind", v)}
                   />
                 </label>
                 {wm.kind === "text" && (
-                  <>
+                  <PanelSection
+                    icon={Stamp}
+                    title="محتوا"
+                    summary={
+                      wm.template ? "قالب چندعنصری" : wm.text || "متن خالی"
+                    }
+                    defaultOpen={!wm.template}
+                  >
                     {wm.template ? (
                       <WatermarkTemplateEditor
                         template={wm.template}
@@ -2617,7 +2615,7 @@ export default function Editor({
                     ) : (
                       <>
                         <label>
-                          Watermark text
+                          متن واترمارک
                           <Input
                             className="h-8 text-xs"
                             value={wm.text}
@@ -2625,11 +2623,11 @@ export default function Editor({
                             onChange={(e) =>
                               update("watermark", "text", e.target.value)
                             }
-                            placeholder="@yourname"
+                            placeholder="@نامشما"
                           />
                         </label>
                         <label>
-                          Font
+                          فونت
                           <Select
                             value={wm.font}
                             options={fonts}
@@ -2637,7 +2635,7 @@ export default function Editor({
                           />
                         </label>
                         <Slider
-                          label="Text size"
+                          label="اندازه متن"
                           value={wm.size}
                           min={12}
                           max={200}
@@ -2646,10 +2644,10 @@ export default function Editor({
                           onChange={(v) => update("watermark", "size", v)}
                         />
                         <label>
-                          Color
+                          رنگ
                           <Color
                             value={wm.color}
-                            name="Watermark color"
+                            name="رنگ واترمارک"
                             onChange={(v) => update("watermark", "color", v)}
                           />
                         </label>
@@ -2664,26 +2662,33 @@ export default function Editor({
                             )
                           }
                         >
-                          <Stamp size={16} /> Use multi-element template
+                          <Stamp size={16} /> استفاده از قالب چندعنصری
                         </button>
                       </>
                     )}
-                  </>
+                  </PanelSection>
                 )}
                 {wm.kind === "image" && (
-                  <>
+                  <PanelSection
+                    icon={Stamp}
+                    title="تصویر"
+                    summary={
+                      wm.asset_id ? "تصویر انتخاب شده" : "تصویری انتخاب نشده"
+                    }
+                    defaultOpen
+                  >
                     <FileButton
-                      label="Upload PNG or JPEG"
+                      label="بارگذاری PNG یا JPEG"
                       accept=".png,.jpg,.jpeg"
                       disabled={busy}
                       onFile={(f) => upload("watermark", f)}
                     />
                     <label>
-                      Image
+                      تصویر
                       <Select
                         value={wm.asset_id}
                         options={[
-                          ["", "Choose image"],
+                          ["", "انتخاب تصویر"],
                           ...(project.assets || [])
                             .filter((a) => a.kind === "watermark")
                             .map((a) => [a.id, a.name]),
@@ -2692,20 +2697,24 @@ export default function Editor({
                       />
                     </label>
                     <Slider
-                      label="Image width"
+                      label="عرض تصویر"
                       value={wm.width}
                       min={0.02}
                       max={0.8}
                       step={0.01}
                       onChange={(v) => update("watermark", "width", v)}
                     />
-                  </>
+                  </PanelSection>
                 )}
                 {wm.kind !== "none" && (
-                  <>
+                  <PanelSection
+                    icon={Move}
+                    title="موقعیت و نمایش"
+                    summary={`${Math.round(wm.x * 100)}% · ${Math.round(wm.y * 100)}%`}
+                  >
                     {(!wm.template || wm.kind === "image") && (
                       <Slider
-                        label="Opacity"
+                        label="شفافیت"
                         value={wm.opacity}
                         min={0}
                         max={1}
@@ -2714,15 +2723,15 @@ export default function Editor({
                       />
                     )}
                     <label>
-                      Corner preset
+                      پیش‌تنظیم گوشه
                       <Select
                         value=""
                         options={[
-                          ["", "Drag in the preview, or choose…"],
-                          ["tl", "Top left"],
-                          ["tr", "Top right"],
-                          ["bl", "Bottom left"],
-                          ["br", "Bottom right"],
+                          ["", "در پیش‌نمایش بکشید یا انتخاب کنید…"],
+                          ["tl", "بالا چپ"],
+                          ["tr", "بالا راست"],
+                          ["bl", "پایین چپ"],
+                          ["br", "پایین راست"],
                         ]}
                         onChange={(v) => {
                           const edge = wm.template ? 0.12 : 0;
@@ -2740,7 +2749,7 @@ export default function Editor({
                       />
                     </label>
                     <Slider
-                      label="Horizontal position"
+                      label="موقعیت افقی"
                       value={wm.x}
                       min={0}
                       max={1}
@@ -2748,7 +2757,7 @@ export default function Editor({
                       onChange={(v) => update("watermark", "x", v)}
                     />
                     <Slider
-                      label="Vertical position"
+                      label="موقعیت عمودی"
                       value={wm.y}
                       min={0}
                       max={1}
@@ -2756,7 +2765,7 @@ export default function Editor({
                       onChange={(v) => update("watermark", "y", v)}
                     />
                     <label>
-                      Margin (px)
+                      حاشیه (px)
                       <Num
                         value={wm.margin}
                         min={0}
@@ -2767,7 +2776,7 @@ export default function Editor({
                     </label>
                     <div className="form-row">
                       <label>
-                        Visible from (s)
+                        نمایش از (ثانیه)
                         <Num
                           value={wm.start}
                           min={0}
@@ -2776,14 +2785,14 @@ export default function Editor({
                         />
                       </label>
                       <label>
-                        Until (s)
+                        تا (ثانیه)
                         <Input
                           className="h-8 text-xs"
                           type="number"
                           min={0}
                           step={0.1}
                           value={wm.end ?? ""}
-                          placeholder="End of clip"
+                          placeholder="پایان کلیپ"
                           onChange={(e) =>
                             update(
                               "watermark",
@@ -2797,26 +2806,30 @@ export default function Editor({
                       </label>
                     </div>
                     <p className="hint">
-                      Visibility times are relative to your selected clip. Drag
-                      the mark in the preview to position it.
+                      زمان‌ها نسبت به کلیپ هستند. برای جابه‌جایی، نشان را در
+                      پیش‌نمایش بکشید.
                     </p>
-                  </>
+                  </PanelSection>
                 )}
+                <button
+                  type="button"
+                  className="adv-save-default"
+                  disabled={savingDefaults}
+                  onClick={() => saveAsDefaults("watermark")}
+                >
+                  <Save size={13} /> ذخیره استایل فعلی به‌عنوان پیش‌فرض
+                </button>
               </>
             )}
             {tab === "audio" && (
               <>
-                <div className="control-heading">
-                  <h2>Set the mood</h2>
-                  <p>Keep the voice. Add a little atmosphere.</p>
-                </div>
                 <label>
-                  Original audio track
+                  مسیر صدای اصلی
                   <Select
                     value={String(edit.audio.track)}
                     options={project.metadata.audio.map((a, i) => [
                       String(i),
-                      a.title || `Track ${i + 1} · ${a.language || a.codec}`,
+                      a.title || `مسیر ${i + 1} · ${a.language || a.codec}`,
                     ])}
                     onChange={(v) => {
                       update("audio", "track", Number(v));
@@ -2827,10 +2840,10 @@ export default function Editor({
                   checked={edit.audio.mute}
                   onChange={(v) => update("audio", "mute", v)}
                 >
-                  Mute original audio
+                  بی‌صدا کردن صدای اصلی
                 </Check>
                 <Slider
-                  label="Original volume"
+                  label="صدای اصلی"
                   value={edit.audio.volume}
                   min={0}
                   max={3}
@@ -2838,60 +2851,65 @@ export default function Editor({
                   suffix="×"
                   onChange={(v) => update("audio", "volume", v)}
                 />
-                <div className="control-divider" />
-                <h3>Background music</h3>
-                <FileButton
-                  label="Upload music"
-                  accept="audio/*,.m4a,.flac"
-                  disabled={busy}
-                  onFile={(f) => upload("music", f)}
-                />
-                <label>
-                  Music track
-                  <Select
-                    value={edit.audio.music_id}
-                    options={[
-                      ["", "No background music"],
-                      ...(project.assets || [])
-                        .filter((a) => a.kind === "music")
-                        .map((a) => [a.id, a.name]),
-                    ]}
-                    onChange={(v) => update("audio", "music_id", v)}
+                <PanelSection
+                  icon={Music}
+                  title="موسیقی پس‌زمینه"
+                  summary={edit.audio.music_id ? "فعال" : "بدون موسیقی"}
+                  defaultOpen={!!edit.audio.music_id}
+                >
+                  <FileButton
+                    label="بارگذاری موسیقی"
+                    accept="audio/*,.m4a,.flac"
+                    disabled={busy}
+                    onFile={(f) => upload("music", f)}
                   />
-                </label>
-                <Slider
-                  label="Music volume"
-                  value={edit.audio.music_volume}
-                  min={0}
-                  max={3}
-                  step={0.05}
-                  suffix="×"
-                  onChange={(v) => update("audio", "music_volume", v)}
-                />
-                <div className="form-row">
                   <label>
-                    Fade in (s)
-                    <Num
-                      value={edit.audio.fade_in}
-                      min={0}
-                      max={30}
-                      onChange={(v) => update("audio", "fade_in", v)}
+                    مسیر موسیقی
+                    <Select
+                      value={edit.audio.music_id}
+                      options={[
+                        ["", "بدون موسیقی پس‌زمینه"],
+                        ...(project.assets || [])
+                          .filter((a) => a.kind === "music")
+                          .map((a) => [a.id, a.name]),
+                      ]}
+                      onChange={(v) => update("audio", "music_id", v)}
                     />
                   </label>
-                  <label>
-                    Fade out (s)
-                    <Num
-                      value={edit.audio.fade_out}
-                      min={0}
-                      max={30}
-                      onChange={(v) => update("audio", "fade_out", v)}
-                    />
-                  </label>
-                </div>
-                <p className="hint">
-                  Music starts at the clip start and loops when needed. Boosted
-                  volumes above 1× are verified in rendered previews.
-                </p>
+                  <Slider
+                    label="صدای موسیقی"
+                    value={edit.audio.music_volume}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    suffix="×"
+                    onChange={(v) => update("audio", "music_volume", v)}
+                  />
+                  <div className="form-row">
+                    <label>
+                      محو تدریجی ورود (ثانیه)
+                      <Num
+                        value={edit.audio.fade_in}
+                        min={0}
+                        max={30}
+                        onChange={(v) => update("audio", "fade_in", v)}
+                      />
+                    </label>
+                    <label>
+                      محو تدریجی خروج (ثانیه)
+                      <Num
+                        value={edit.audio.fade_out}
+                        min={0}
+                        max={30}
+                        onChange={(v) => update("audio", "fade_out", v)}
+                      />
+                    </label>
+                  </div>
+                  <p className="hint">
+                    موسیقی از ابتدای کلیپ شروع می‌شود و در صورت نیاز تکرار
+                    می‌شود.
+                  </p>
+                </PanelSection>
               </>
             )}
           </div>
@@ -2900,6 +2918,42 @@ export default function Editor({
     </div>
   );
 }
+function PanelSection({
+  icon: Icon,
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  icon: React.ComponentType<{ size?: number }>;
+  title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={"adv-section" + (open ? " open" : "")}>
+      <button
+        type="button"
+        className="adv-section-head"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="adv-section-icon" aria-hidden="true">
+          <Icon size={15} />
+        </span>
+        <span className="adv-section-copy">
+          <strong>{title}</strong>
+          {summary && <small>{summary}</small>}
+        </span>
+        <ChevronDown size={15} className="adv-chevron" aria-hidden="true" />
+      </button>
+      {open && <div className="adv-section-body">{children}</div>}
+    </section>
+  );
+}
+
 function Num({
   value,
   onChange,
@@ -3032,7 +3086,7 @@ function FileButton({
   return (
     <label className={"file-button secondary " + (disabled ? "disabled" : "")}>
       <Upload size={15} />
-      {disabled ? "Uploading…" : label}
+      {disabled ? "در حال بارگذاری…" : label}
       <input
         type="file"
         accept={accept}
@@ -3061,7 +3115,7 @@ function Color({
     <div className="color-field">
       <input
         type="color"
-        aria-label={`${name} picker`}
+        aria-label={`انتخابگر ${name}`}
         value={value}
         onInput={(e) => onChange(e.currentTarget.value)}
         onChange={(e) => onChange(e.target.value)}

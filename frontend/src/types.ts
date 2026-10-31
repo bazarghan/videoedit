@@ -217,11 +217,11 @@ export async function api<T = any>(
   if (!response.ok) {
     const error = await response
       .json()
-      .catch(() => ({ detail: "The request failed. Try again." }));
+      .catch(() => ({ detail: "درخواست انجام نشد. دوباره تلاش کنید." }));
     throw new Error(
       typeof error.detail === "string"
         ? error.detail
-        : "Check your entries and try again.",
+        : "ورودی‌ها را بررسی کنید و دوباره تلاش کنید.",
     );
   }
   return response.json();

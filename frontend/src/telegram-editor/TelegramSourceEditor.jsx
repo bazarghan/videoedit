@@ -35,7 +35,7 @@ export function TelegramSourceEditor({
   maxLength,
   onChange,
   onSelectionChange,
-  placeholder = 'Write your message…',
+  placeholder = 'پیام خود را بنویسید…',
   label,
   describedBy,
   invalid,

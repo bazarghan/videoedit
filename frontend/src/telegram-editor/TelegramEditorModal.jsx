@@ -16,7 +16,7 @@ export function TelegramEditorModal({
   onChange,
   format = FORMAT_HTML,
   onFormatChange,
-  title = 'Message editor',
+  title = 'ویرایشگر پیام',
   ...props
 }) {
   const [draft, setDraft] = useState(value ?? '')

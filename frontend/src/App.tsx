@@ -61,11 +61,24 @@ const emptyProxy: DownloadProxyDraft = {
 };
 
 const nav = [
-  { id: "projects", label: "Projects", icon: LayoutGrid },
-  { id: "queue", label: "Activity", icon: ListVideo },
-  { id: "clips", label: "Rendered clips", icon: Film },
-  { id: "settings", label: "Settings", icon: SettingsIcon },
+  { id: "projects", label: "پروژه‌ها", icon: LayoutGrid },
+  { id: "queue", label: "فعالیت‌ها", icon: ListVideo },
+  { id: "clips", label: "کلیپ‌های رندرشده", icon: Film },
+  { id: "settings", label: "تنظیمات", icon: SettingsIcon },
 ];
+
+const statusLabels: Record<string, string> = {
+  ready: "آماده",
+  pending: "در انتظار",
+  queued: "در صف",
+  running: "در حال اجرا",
+  completed: "انجام شد",
+  failed: "ناموفق",
+  cancelled: "لغو شده",
+  interrupted: "قطع شده",
+};
+const statusLabel = (status: string) => statusLabels[status] || status;
+
 export default function App() {
   const resultVideo = useRef<HTMLVideoElement>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null),
@@ -174,7 +187,7 @@ export default function App() {
       setUrl("");
       setName("");
       openEditor(r.project_id);
-      toast("Download added. Your editor will be ready after processing.");
+      toast("دانلود افزوده شد. ویرایشگر پس از پردازش آماده می‌شود.");
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -203,7 +216,7 @@ export default function App() {
         setProxy(emptyProxy);
         setUseProxy(false);
       } else await saveProxy();
-      toast(remove ? "Saved proxy removed." : "SOCKS5 proxy saved securely.");
+      toast(remove ? "پروکسی ذخیره‌شده حذف شد." : "پروکسی SOCKS5 با اطمینان ذخیره شد.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -226,10 +239,10 @@ export default function App() {
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 400)
           throw new Error(
-            typeof data.detail === "string" ? data.detail : "Upload failed.",
+            typeof data.detail === "string" ? data.detail : "بارگذاری ناموفق بود.",
           );
         openEditor(data.project_id);
-        toast("Video uploaded. Preparing your editor…");
+        toast("ویدیو بارگذاری شد. ویرایشگر آماده می‌شود…");
         refresh();
       } catch (e) {
         setError((e as Error).message);
@@ -237,7 +250,7 @@ export default function App() {
     };
     xhr.onerror = () => {
       setBusy(false);
-      setError("The upload was interrupted. Try again.");
+      setError("بارگذاری قطع شد. دوباره تلاش کنید.");
     };
     xhr.send(form);
   }
@@ -251,7 +264,7 @@ export default function App() {
       );
       setCaption(result.caption);
       setCaptionOpen(true);
-      toast("Auto caption ready. Review it before posting.");
+      toast("کپشن خودکار آماده است. پیش از ارسال آن را بررسی کنید.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -273,7 +286,7 @@ export default function App() {
   if (authenticated === null)
     return (
       <div className="splash">
-        <LoaderCircle className="spin" /> Opening your studio
+        <LoaderCircle className="spin" /> در حال باز کردن استودیوی شما
       </div>
     );
   if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
@@ -293,7 +306,7 @@ export default function App() {
           </span>
           videoedit<span className="brand-dot">.</span>
         </a>
-        <div className="sidebar-label">YOUR WORKSPACE</div>
+        <div className="sidebar-label">فضای کاری شما</div>
         <nav>
           {nav.map((n) => (
             <button
@@ -312,7 +325,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="storage-mini">
             <HardDrive size={16} />
-            <span>Workspace storage</span>
+            <span>فضای ذخیره‌سازی</span>
           </div>
           <div className="meter">
             <i
@@ -322,11 +335,11 @@ export default function App() {
             />
           </div>
           <small>
-            {size(settings?.storage.used)} of {settings?.storage.limit_gb || 20}{" "}
-            GB
+            <span dir="ltr">{size(settings?.storage.used)}</span> از{" "}
+            <span dir="ltr">{settings?.storage.limit_gb || 20} GB</span>
           </small>
           <button
-            aria-label="Sign out"
+            aria-label="خروج از حساب"
             className="account"
             onClick={() =>
               action(async () => {
@@ -337,7 +350,7 @@ export default function App() {
           >
             <span className="avatar">A</span>
             <span>
-              Administrator<small>Private workspace</small>
+              مدیر<small>فضای کاری خصوصی</small>
             </span>
             <LogOut size={17} />
           </button>
@@ -346,33 +359,32 @@ export default function App() {
       <main className={"main " + (page === "editor" ? "editor-main" : "")}>
         <header className="topbar">
           <span className="breadcrumb">
-            Workspace <ChevronRight size={14} />{" "}
+            فضای کاری <ChevronRight size={14} />{" "}
             {page === "editor"
-              ? "Video editor"
+              ? "ویرایشگر ویدیو"
               : nav.find((n) => n.id === page)?.label}
           </span>
           <span className="topbar-right">
             <span className="live-dot" />
             {active.length
-              ? `${active.length} active ${active.length === 1 ? "job" : "jobs"}`
-              : "All caught up"}
-            <span className="avatar small">A</span>
+              ? `${active.length} کار در حال اجرا`
+              : "همه کارها انجام شد"}
           </span>
         </header>
         {page === "projects" && (
           <div className="page">
             <div className="page-heading">
               <div>
-                <span className="eyebrow">A LITTLE EDITING. A BIG MOMENT.</span>
+                <span className="eyebrow">کمی ویرایش، لحظه‌ای بزرگ</span>
                 <h1>
-                  Your next great clip
+                  کلیپ بعدی‌تان
                   <br />
-                  starts here<span className="accent">.</span>
+                  از همین‌جا شروع می‌شود<span className="accent">.</span>
                 </h1>
-                <p>Bring a video. Find your moment. Make it yours.</p>
+                <p>ویدیو را بیاورید. لحظه‌تان را پیدا کنید. مال خودتانش کنید.</p>
               </div>
               <button className="primary" onClick={() => setImportOpen(true)}>
-                <Plus size={18} /> New project
+                <Plus size={18} /> پروژه جدید
               </button>
             </div>
             <div className="import-banner">
@@ -380,8 +392,11 @@ export default function App() {
                 <Link size={26} />
               </div>
               <div>
-                <h3>From a link to a finished clip</h3>
-                <p>Import a video, shape the frame, add captions, and share.</p>
+                <h3>از یک لینک تا کلیپ آماده</h3>
+                <p>
+                  ویدیو را وارد کنید، کادر را تنظیم کنید، زیرنویس اضافه کنید و
+                  به اشتراک بگذارید.
+                </p>
               </div>
               <button
                 className="secondary"
@@ -390,14 +405,14 @@ export default function App() {
                   setImportOpen(true);
                 }}
               >
-                Import video <ArrowUpRight size={16} />
+                افزودن ویدیو <ArrowUpRight size={16} />
               </button>
             </div>
             <div className="section-heading">
               <h2>
-                Recent projects <span>{projects.length}</span>
+                پروژه‌های اخیر <span>{projects.length}</span>
               </h2>
-              <span className="muted">Your originals, edits & ideas</span>
+              <span className="muted">اصلی‌ها، ویرایش‌ها و ایده‌های شما</span>
             </div>
             {!projects.length ? (
               <div className="empty">
@@ -407,10 +422,13 @@ export default function App() {
                     <Plus size={18} />
                   </span>
                 </div>
-                <h3>A blank canvas for your next story</h3>
-                <p>Paste a direct video link or upload an MP4, MKV, or WebM.</p>
+                <h3>بوم سفیدی برای داستان بعدی شما</h3>
+                <p>
+                  یک لینک مستقیم ویدیو جای‌گذاری کنید یا فایل MP4، MKV یا WebM
+                  بارگذاری کنید.
+                </p>
                 <button className="primary" onClick={() => setImportOpen(true)}>
-                  Import your first video <ArrowUpRight size={16} />
+                  اولین ویدیوی خود را وارد کنید <ArrowUpRight size={16} />
                 </button>
               </div>
             ) : (
@@ -424,7 +442,7 @@ export default function App() {
                       {p.has_thumbnail ? (
                         <img
                           src={`/api/media/project/${p.id}/thumbnail`}
-                          alt="Video thumbnail"
+                          alt="تصویر شاخص ویدیو"
                         />
                       ) : (
                         <Film size={32} />
@@ -443,7 +461,7 @@ export default function App() {
                       <p>
                         {p.metadata.width
                           ? `${p.metadata.width} × ${p.metadata.height} · ${size(p.metadata.size)}`
-                          : "Preparing source video"}
+                          : "در حال آماده‌سازی ویدیوی منبع"}
                       </p>
                       <div className="card-footer">
                         <span
@@ -451,18 +469,18 @@ export default function App() {
                             "badge " + (p.status === "ready" ? "success" : "")
                           }
                         >
-                          {p.status}
+                          {statusLabel(p.status)}
                         </span>
                         <button
                           className="icon-button"
-                          aria-label={`Delete ${p.name}`}
+                          aria-label={`حذف ${p.name}`}
                           onClick={() => {
                             if (
-                              confirm("Delete this project and all its media?")
+                              confirm("این پروژه و همه رسانه‌هایش حذف شوند؟")
                             )
                               action(
                                 () => api(`/projects/${p.id}`, json("DELETE")),
-                                "Project deleted.",
+                                "پروژه حذف شد.",
                               );
                           }}
                         >
@@ -494,20 +512,20 @@ export default function App() {
           <div className="page">
             <div className="page-heading compact">
               <div>
-                <span className="eyebrow">KEEP THINGS MOVING</span>
-                <h1>Activity</h1>
+                <span className="eyebrow">کارها را پیش ببرید</span>
+                <h1>فعالیت‌ها</h1>
                 <p>
-                  Downloads, automatic subtitles, previews, renders, and
-                  Telegram uploads.
+                  دانلودها، زیرنویس‌های خودکار، پیش‌نمایش‌ها، رندرها و ارسال‌های
+                  Telegram.
                 </p>
               </div>
-              <span className="pill">One render at a time</span>
+              <span className="pill">هر بار یک رندر</span>
             </div>
             {!jobs.length ? (
               <div className="empty">
                 <ListVideo size={40} />
-                <h3>Nothing in the queue yet</h3>
-                <p>Your background jobs will appear here.</p>
+                <h3>هنوز چیزی در صف نیست</h3>
+                <p>کارهای پس‌زمینه شما اینجا نمایش داده می‌شوند.</p>
               </div>
             ) : (
               <div className="job-list">
@@ -531,12 +549,12 @@ export default function App() {
                         <strong>
                           {
                             {
-                              download: "Download",
-                              ingest: "Inspect video",
-                              render: "Render clip",
-                              cover: "Telegram cover",
-                              autosubtitle: "Auto subtitle",
-                              telegram: "Send to Telegram",
+                              download: "دانلود",
+                              ingest: "بررسی ویدیو",
+                              render: "رندر کلیپ",
+                              cover: "کاور Telegram",
+                              autosubtitle: "زیرنویس خودکار",
+                              telegram: "ارسال به Telegram",
                             }[j.kind]
                           }
                         </strong>
@@ -550,7 +568,7 @@ export default function App() {
                                 : "")
                           }
                         >
-                          {j.status}
+                          {statusLabel(j.status)}
                         </span>
                       </div>
                       <button
@@ -558,7 +576,7 @@ export default function App() {
                         onClick={() => openEditor(j.project_id)}
                       >
                         {projects.find((p) => p.id === j.project_id)?.name ||
-                          "Project"}
+                          "پروژه"}
                       </button>
                       {j.status === "running" && (
                         <>
@@ -567,9 +585,9 @@ export default function App() {
                           </div>
                           <small>
                             {j.progress.toFixed(0)}% · {clock(j.elapsed)}{" "}
-                            elapsed{" "}
+                            سپری‌شده{" "}
                             {j.eta !== null
-                              ? `· ~${clock(j.eta)} remaining`
+                              ? `· حدود ${clock(j.eta)} باقی‌مانده`
                               : ""}
                             {j.speed > 0
                               ? ` · ${size(j.bytes)} · ${size(j.speed)}/s`
@@ -589,7 +607,7 @@ export default function App() {
                             )
                           }
                         >
-                          Cancel
+                          لغو
                         </button>
                       )}
                       {["failed", "cancelled", "interrupted"].includes(
@@ -602,17 +620,17 @@ export default function App() {
                               j.kind === "telegram" &&
                               j.status === "interrupted" &&
                               !confirm(
-                                "This send may already have completed. Retry and risk sending a duplicate?",
+                                "این ارسال ممکن است قبلاً انجام شده باشد. تکرار می‌کنید و خطر ارسال تکراری را می‌پذیرید؟",
                               )
                             )
                               return;
                             action(
                               () => api(`/jobs/${j.id}/retry`, json("POST")),
-                              "Job queued again.",
+                              "کار دوباره در صف قرار گرفت.",
                             );
                           }}
                         >
-                          Retry
+                          تلاش دوباره
                         </button>
                       )}
                       {j.result_id && j.kind === "render" && (
@@ -623,7 +641,7 @@ export default function App() {
                             if (c) showClip(c);
                           }}
                         >
-                          View clip <ArrowUpRight size={14} />
+                          مشاهده کلیپ <ArrowUpRight size={14} />
                         </button>
                       )}
                     </div>
@@ -637,17 +655,17 @@ export default function App() {
           <div className="page">
             <div className="page-heading compact">
               <div>
-                <span className="eyebrow">READY FOR THE WORLD</span>
-                <h1>Rendered clips</h1>
-                <p>Finished exports and short previews, all in one place.</p>
+                <span className="eyebrow">آماده برای دیده‌شدن</span>
+                <h1>کلیپ‌های رندرشده</h1>
+                <p>خروجی‌های نهایی و پیش‌نمایش‌های کوتاه، همه در یک جا.</p>
               </div>
-              <span className="pill">{clips.length} clips</span>
+              <span className="pill">{clips.length} کلیپ</span>
             </div>
             {!clips.length ? (
               <div className="empty">
                 <Film size={40} />
-                <h3>Your finished clips belong here</h3>
-                <p>Open a project and render your selected moment.</p>
+                <h3>کلیپ‌های آماده شما جایشان همین‌جاست</h3>
+                <p>یک پروژه را باز کنید و لحظه انتخابی‌تان را رندر کنید.</p>
               </div>
             ) : (
               <div className="project-grid">
@@ -660,7 +678,7 @@ export default function App() {
                       {c.has_cover ? (
                         <img
                           src={`/api/media/clip/${c.id}/cover?v=${c.metadata.cover?.revision}`}
-                          alt="Video cover"
+                          alt="کاور ویدیو"
                         />
                       ) : (
                         <video
@@ -676,7 +694,7 @@ export default function App() {
                         {clock(c.metadata.duration)}
                       </span>
                       {c.preview && (
-                        <span className="preview-tag">Preview</span>
+                        <span className="preview-tag">پیش‌نمایش</span>
                       )}
                     </button>
                     <div className="project-info">
@@ -690,23 +708,23 @@ export default function App() {
                           className="text-link"
                           href={`/api/media/clip/${c.id}?download=true`}
                         >
-                          <Download size={14} /> Download
+                          <Download size={14} /> دانلود
                         </a>
                         <button
                           className="icon-button"
-                          aria-label="Send to Telegram"
+                          aria-label="ارسال به Telegram"
                           onClick={() => showClip(c)}
                         >
                           <Send size={16} />
                         </button>
                         <button
                           className="icon-button"
-                          aria-label="Delete clip"
+                          aria-label="حذف کلیپ"
                           onClick={() => {
-                            if (confirm("Delete this rendered clip?"))
+                            if (confirm("این کلیپ رندرشده حذف شود؟"))
                               action(
                                 () => api(`/clips/${c.id}`, json("DELETE")),
-                                "Clip deleted.",
+                                "کلیپ حذف شد.",
                               );
                           }}
                         >
@@ -728,15 +746,15 @@ export default function App() {
           />
         )}
         <footer className="footer">
-          Made for the moments worth keeping.
-          <span>VideoEdit · Clip studio</span>
+          ساخته‌شده برای لحظه‌هایی که ارزش نگه‌داشتن دارند.
+          <span>VideoEdit · استودیوی کلیپ</span>
         </footer>
       </main>
       {(error || notice) && (
         <div role="alert" className={"toast " + (error ? "error" : "")}>
           <span>{error || notice}</span>
           <button
-            aria-label="Dismiss"
+            aria-label="بستن"
             onClick={() => {
               setError("");
               setNotice("");
@@ -756,13 +774,13 @@ export default function App() {
           <section className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-heading">
               <div>
-                <span className="eyebrow">LET’S MAKE SOMETHING</span>
-                <h2>Import a video</h2>
+                <span className="eyebrow">بیایید چیزی بسازیم</span>
+                <h2>افزودن ویدیو</h2>
               </div>
               <button
                 className="icon-button"
                 disabled={busy}
-                aria-label="Close"
+                aria-label="بستن"
                 onClick={() => setImportOpen(false)}
               >
                 <X />
@@ -773,19 +791,19 @@ export default function App() {
                 className={tab === "url" ? "active" : ""}
                 onClick={() => setTab("url")}
               >
-                <Link size={15} /> Video link
+                <Link size={15} /> لینک ویدیو
               </button>
               <button
                 className={tab === "upload" ? "active" : ""}
                 onClick={() => setTab("upload")}
               >
-                <Upload size={15} /> Upload a file
+                <Upload size={15} /> بارگذاری فایل
               </button>
             </div>
             {tab === "url" ? (
               <form onSubmit={importURL}>
                 <label>
-                  Direct video URL
+                  نشانی مستقیم ویدیو
                   <Textarea
                     required
                     placeholder="https://example.com/video.mp4?token=…"
@@ -794,15 +812,15 @@ export default function App() {
                   />
                 </label>
                 <p className="hint">
-                  Use a direct link to an MP4, MKV, or WebM file. Signed links
-                  keep all their query parameters.
+                  از یک لینک مستقیم به فایل MP4، MKV یا WebM استفاده کنید.
+                  لینک‌های امضاشده همه پارامترهای کوئری خود را حفظ می‌کنند.
                 </p>
                 <label>
-                  Project name <span className="muted">(optional)</span>
+                  نام پروژه <span className="muted">(اختیاری)</span>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="A moment worth keeping"
+                    placeholder="لحظه‌ای که ارزش نگه‌داشتن دارد"
                     maxLength={120}
                   />
                 </label>
@@ -821,7 +839,7 @@ export default function App() {
                   ) : (
                     <Download size={18} />
                   )}{" "}
-                  {busy ? "Adding…" : "Download & create project"}
+                  {busy ? "در حال افزودن…" : "دانلود و ساخت پروژه"}
                 </button>
               </form>
             ) : (
@@ -837,14 +855,16 @@ export default function App() {
                 <Upload size={30} />
                 <strong>
                   {busy
-                    ? `Uploading · ${progress.toFixed(0)}%`
-                    : "Drop your video here"}
+                    ? `در حال بارگذاری · ${progress.toFixed(0)}%`
+                    : "ویدیوی خود را اینجا رها کنید"}
                 </strong>
                 <span>
-                  {busy ? "Keep this window open" : "or click to choose a file"}
+                  {busy
+                    ? "این پنجره را باز نگه دارید"
+                    : "یا برای انتخاب فایل کلیک کنید"}
                 </span>
                 <small>
-                  MP4, MKV, WebM · limited by available workspace storage
+                  MP4، MKV، WebM · محدود به فضای ذخیره‌سازی در دسترس
                 </small>
                 <input
                   type="file"
@@ -874,14 +894,14 @@ export default function App() {
               <div>
                 <span className="eyebrow">
                   {openClip.preview
-                    ? "ACTUAL RENDER PREVIEW"
-                    : "YOUR FINISHED CLIP"}
+                    ? "پیش‌نمایش رندر واقعی"
+                    : "کلیپ آماده شما"}
                 </span>
                 <h2>{openClip.name}</h2>
               </div>
               <button
                 className="icon-button"
-                aria-label="Close clip"
+                aria-label="بستن کلیپ"
                 onClick={() => setOpenClip(null)}
               >
                 <X />
@@ -900,13 +920,15 @@ export default function App() {
               autoPlay
             />
             <div className="result-meta">
-              {clock(openClip.metadata.duration)} · {openClip.metadata.width} ×{" "}
-              {openClip.metadata.height} · {size(openClip.metadata.size)}
+              <span dir="ltr">
+                {clock(openClip.metadata.duration)} · {openClip.metadata.width}{" "}
+                × {openClip.metadata.height} · {size(openClip.metadata.size)}
+              </span>
               <a
                 className="primary"
                 href={`/api/media/clip/${openClip.id}?download=true`}
               >
-                <Download size={16} /> Download MP4
+                <Download size={16} /> دانلود MP4
               </a>
             </div>
             <TelegramCover
@@ -919,11 +941,11 @@ export default function App() {
             />
             <div className="send-panel">
               <h3>
-                <Send size={17} /> Post to Telegram
+                <Send size={17} /> ارسال به Telegram
               </h3>
               {!settings?.telegram_status.connected ? (
                 <p>
-                  Connect your Telegram bot in{" "}
+                  برای ارسال کلیپ‌ها، ربات Telegram خود را در{" "}
                   <button
                     className="text-link"
                     onClick={() => {
@@ -931,13 +953,13 @@ export default function App() {
                       setPage("settings");
                     }}
                   >
-                    Settings
+                    تنظیمات
                   </button>{" "}
-                  to post clips.
+                  متصل کنید.
                 </p>
               ) : !settings.telegram.channels.length ? (
                 <p>
-                  Add a channel in{" "}
+                  یک کانال در{" "}
                   <button
                     className="text-link"
                     onClick={() => {
@@ -945,9 +967,9 @@ export default function App() {
                       setPage("settings");
                     }}
                   >
-                    Settings
+                    تنظیمات
                   </button>{" "}
-                  and verify the bot is an administrator there.
+                  اضافه کنید و مطمئن شوید ربات در آنجا مدیر است.
                 </p>
               ) : (
                 <form
@@ -964,21 +986,21 @@ export default function App() {
                             as_file: asFile,
                           }),
                         ),
-                      "Telegram post queued. Track it in Activity.",
+                      "ارسال به Telegram در صف قرار گرفت. آن را در فعالیت‌ها پیگیری کنید.",
                     );
                   }}
                 >
                   <label>
-                    Channel
+                    کانال
                     <Select
                       value={dest || settings.telegram.channels[0].id}
                       onValueChange={(value) => setDest(value)}
                     >
                       <SelectTrigger
                         className="h-9 text-xs"
-                        aria-label="Channel"
+                        aria-label="کانال"
                       >
-                        <SelectValue placeholder="Choose a channel" />
+                        <SelectValue placeholder="یک کانال انتخاب کنید" />
                       </SelectTrigger>
                       <SelectContent>
                         {settings.telegram.channels.map((channel) => (
@@ -991,14 +1013,15 @@ export default function App() {
                     </Select>
                   </label>
                   <div className="caption-field">
-                    <span className="caption-field-label">Caption</span>
+                    <span className="caption-field-label">کپشن</span>
                     <div className="caption-box">
                       <div className="caption-preview">
                         {caption ? (
                           <TelegramRichText text={caption} />
                         ) : (
                           <span className="muted">
-                            No caption yet. Add formatted text, links, or emoji.
+                            هنوز کپشنی نیست. متن قالب‌بندی‌شده، لینک یا ایموجی
+                            اضافه کنید.
                           </span>
                         )}
                       </div>
@@ -1016,8 +1039,8 @@ export default function App() {
                             onClick={autoCaption}
                             title={
                               !settings?.ai.api_key_saved
-                                ? "Add your 9Router API token in Settings first"
-                                : "Write a caption from this clip's subtitles using the prompt in Settings"
+                                ? "ابتدا توکن API سرویس 9Router را در تنظیمات وارد کنید"
+                                : "با استفاده از پرامپت موجود در تنظیمات، از زیرنویس‌های این کلیپ کپشن بنویس"
                             }
                           >
                             {captionBusy ? (
@@ -1025,7 +1048,7 @@ export default function App() {
                             ) : (
                               <Sparkles size={15} />
                             )}{" "}
-                            {captionBusy ? "Writing…" : "Auto caption"}
+                            {captionBusy ? "در حال نوشتن…" : "کپشن خودکار"}
                           </button>
                           <button
                             type="button"
@@ -1033,15 +1056,15 @@ export default function App() {
                             onClick={() => setCaptionOpen(true)}
                           >
                             <Pencil size={15} />{" "}
-                            {caption ? "Edit caption" : "Write caption"}
+                            {caption ? "ویرایش کپشن" : "نوشتن کپشن"}
                           </button>
                         </div>
                       </div>
                     </div>
                     <p className="hint caption-hint">
-                      Auto caption uses the clip's English and Persian subtitles
-                      plus the system prompt in Settings → Auto subtitles &
-                      captions.
+                      کپشن خودکار از زیرنویس‌های انگلیسی و فارسی کلیپ و همچنین
+                      پرامپت سیستمی در تنظیمات ← زیرنویس و کپشن خودکار استفاده
+                      می‌کند.
                     </p>
                   </div>
                   <Label className="check">
@@ -1049,13 +1072,14 @@ export default function App() {
                       checked={asFile}
                       onCheckedChange={(value) => setAsFile(value === true)}
                     />
-                    <span>Send as a file instead of a playable video</span>
+                    <span>ارسال به‌صورت فایل به‌جای ویدیوی قابل پخش</span>
                   </Label>
                   <p className="hint">
-                    Videos upload over MTProto through your bot, up to 2 GB.
+                    ویدیوها از طریق MTProto و با ربات شما آپلود می‌شوند، تا ۲
+                    GB.
                   </p>
                   <button className="primary" disabled={coverPending}>
-                    <Send size={16} /> Post now
+                    <Send size={16} /> همین حالا ارسال کنید
                   </button>
                 </form>
               )}
@@ -1070,11 +1094,11 @@ export default function App() {
               maxLength={1024}
               richEnabled={false}
               defaultShowPreview
-              title="Post caption"
-              label="Caption for your Telegram channel post"
-              placeholder="Write a caption…"
+              title="کپشن پست"
+              label="کپشن برای پست کانال Telegram شما"
+              placeholder="کپشن بنویسید…"
               previewTitle={
-                settings?.telegram_status.name || "Telegram channel"
+                settings?.telegram_status.name || "کانال Telegram"
               }
             />
           </section>
@@ -1094,13 +1118,16 @@ function Login({ onLogin }: { onLogin: () => void }) {
         <div className="login-frame">
           <Scissors size={52} />
         </div>
-        <span className="eyebrow">YOUR PRIVATE CLIP STUDIO</span>
+        <span className="eyebrow">استودیوی خصوصی کلیپ شما</span>
         <h1>
-          Good stories.
+          داستان‌های خوب.
           <br />
-          Great little clips<span className="accent">.</span>
+          کلیپ‌های کوچک عالی<span className="accent">.</span>
         </h1>
-        <p>Find the moment. Shape the story. Share something worth watching.</p>
+        <p>
+          لحظه را پیدا کنید. داستان را بسازید. چیزی ارزش دیدن را به اشتراک
+          بگذارید.
+        </p>
       </div>
       <form
         className="login-card"
@@ -1123,10 +1150,10 @@ function Login({ onLogin }: { onLogin: () => void }) {
           </span>
           videoedit.
         </div>
-        <h2>Welcome to your workspace</h2>
-        <p>Sign in to start creating.</p>
+        <h2>به فضای کاری خود خوش آمدید</h2>
+        <p>برای شروع ساخت، وارد شوید.</p>
         <label>
-          Username
+          نام کاربری
           <Input
             autoComplete="username"
             value={username}
@@ -1135,7 +1162,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
           />
         </label>
         <label>
-          Password
+          گذرواژه
           <Input
             type="password"
             autoComplete="current-password"
@@ -1154,12 +1181,12 @@ function Login({ onLogin }: { onLogin: () => void }) {
             <LoaderCircle className="spin" size={18} />
           ) : (
             <>
-              Sign in <ArrowUpRight size={18} />
+              ورود <ArrowUpRight size={18} />
             </>
           )}
         </button>
         <small className="muted">
-          Your media and edits stay in your private workspace.
+          رسانه‌ها و ویرایش‌های شما در فضای کاری خصوصی‌تان باقی می‌مانند.
         </small>
       </form>
     </div>

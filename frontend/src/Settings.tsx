@@ -70,42 +70,42 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
   if (!settings)
     return (
       <div className="page loading">
-        <LoaderCircle className="spin" /> Loading settings…
+        <LoaderCircle className="spin" /> در حال بارگذاری تنظیمات…
       </div>
     );
   const connected = settings.telegram_status.connected;
   const sections = [
     {
       id: "defaults",
-      label: "Editing defaults",
-      description: "Caption and watermark presets",
+      label: "پیش‌فرض‌های ویرایش",
+      description: "پیش‌تنظیم‌های کپشن و واترمارک",
       icon: SlidersHorizontal,
     },
     {
       id: "subtitles",
-      label: "Auto subtitles",
-      description: "Subtitles, captions, 9Router",
+      label: "زیرنویس خودکار",
+      description: "زیرنویس، کپشن، 9Router",
       icon: Sparkles,
       badge:
         settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
-          ? "Ready"
+          ? "آماده"
           : "",
     },
     {
       id: "telegram",
       label: "Telegram",
-      description: "Bot, channels and posting",
+      description: "ربات، کانال‌ها و ارسال",
       icon: Send,
       badge: connected
         ? settings.telegram.channels.length
-          ? `${settings.telegram.channels.length} channels`
-          : "Connected"
+          ? `${settings.telegram.channels.length} کانال`
+          : "متصل"
         : "",
     },
     {
       id: "storage",
-      label: "Storage",
-      description: "Space and cleanup",
+      label: "فضای ذخیره‌سازی",
+      description: "فضا و پاک‌سازی",
       icon: HardDrive,
     },
   ];
@@ -113,17 +113,17 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     <div className="page settings-page">
       <div className="page-heading compact">
         <div>
-          <span className="eyebrow">A WORKSPACE THAT WORKS FOR YOU</span>
-          <h1>Settings</h1>
+          <span className="eyebrow">فضای کاری‌ای که برای شما کار می‌کند</span>
+          <h1>تنظیمات</h1>
           <p>
-            Choose a section to manage your defaults, subtitle services,
-            Telegram, and storage.
+            برای مدیریت پیش‌فرض‌ها، سرویس‌های زیرنویس، Telegram و فضای
+            ذخیره‌سازی، یک بخش را انتخاب کنید.
           </p>
         </div>
       </div>
       <div className="settings-shell">
-        <nav className="settings-nav" aria-label="Settings sections">
-          <span className="eyebrow">WORKSPACE SETTINGS</span>
+        <nav className="settings-nav" aria-label="بخش‌های تنظیمات">
+          <span className="eyebrow">تنظیمات فضای کاری</span>
           {sections.map((item) => {
             const Icon = item.icon;
             return (
@@ -170,10 +170,10 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   <Sparkles size={22} />
                 </div>
                 <div>
-                  <h2>Auto subtitles & captions</h2>
+                  <h2>زیرنویس و کپشن خودکار</h2>
                   <p>
-                    ElevenLabs transcribes; 9Router translates and writes
-                    Telegram captions.
+                    ElevenLabs رونویسی می‌کند؛ 9Router ترجمه می‌کند و
+                    کپشن‌های Telegram را می‌نویسد.
                   </p>
                 </div>
                 <span
@@ -187,8 +187,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                 >
                   {settings.ai.api_key_saved &&
                   settings.elevenlabs.api_key_saved
-                    ? "Ready"
-                    : "Needs tokens"}
+                    ? "آماده"
+                    : "نیازمند توکن"}
                 </span>
               </div>
               <form
@@ -215,18 +215,18 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     setAiKey("");
                     setElevenKey("");
                     await load();
-                    toast("Auto subtitle and caption settings saved.");
+                    toast("تنظیمات زیرنویس و کپشن خودکار ذخیره شد.");
                   });
                 }}
               >
                 <div className="section-heading">
                   <h3>
-                    <Mic size={14} /> ElevenLabs transcription
+                    <Mic size={14} /> رونویسی ElevenLabs
                   </h3>
-                  <span>English source</span>
+                  <span>منبع انگلیسی</span>
                 </div>
                 <label>
-                  ElevenLabs API token
+                  توکن API ElevenLabs
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -234,13 +234,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     onChange={(e) => setElevenKey(e.target.value)}
                     placeholder={
                       settings.elevenlabs.api_key_saved
-                        ? "Saved securely — leave blank to keep"
-                        : "xi-api-key from elevenlabs.io"
+                        ? "به‌صورت امن ذخیره شده — برای حفظ آن خالی بگذارید"
+                        : "xi-api-key از elevenlabs.io"
                     }
                   />
                 </label>
                 <label>
-                  Transcription model
+                  مدل رونویسی
                   <Input
                     value={elevenModel}
                     onChange={(e) => setElevenModel(e.target.value)}
@@ -248,7 +248,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   />
                 </label>
                 <label>
-                  Maximum video length (minutes)
+                  حداکثر طول ویدیو (دقیقه)
                   <Input
                     type="number"
                     min={1}
@@ -260,24 +260,24 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   />
                 </label>
                 <p className="hint">
-                  Videos longer than this are blocked before any ElevenLabs
-                  tokens are used. The default is 6 minutes.
+                  ویدیوهای طولانی‌تر از این مقدار، پیش از مصرف توکن‌های
+                  ElevenLabs مسدود می‌شوند. مقدار پیش‌فرض ۶ دقیقه است.
                 </p>
                 <p className="hint">
-                  Use <code>scribe_v2</code> for ElevenLabs Scribe v2
-                  (recommended) or <code>scribe_v1</code> for the older model.
-                  The model ID is sent directly to ElevenLabs as{" "}
-                  <code>model_id</code>.
+                  برای ElevenLabs Scribe v2 از <code>scribe_v2</code> (پیشنهادی)
+                  یا برای مدل قدیمی‌تر از <code>scribe_v1</code> استفاده کنید.
+                  شناسه مدل مستقیماً به‌عنوان <code>model_id</code> به
+                  ElevenLabs ارسال می‌شود.
                 </p>
                 <div className="control-divider" />
                 <div className="section-heading">
                   <h3>
-                    <Languages size={14} /> 9Router translation
+                    <Languages size={14} /> ترجمه 9Router
                   </h3>
-                  <span>Persian output</span>
+                  <span>خروجی فارسی</span>
                 </div>
                 <label>
-                  9Router base URL
+                  آدرس پایه 9Router
                   <Input
                     value={aiBase}
                     onChange={(e) => setAiBase(e.target.value)}
@@ -286,7 +286,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   />
                 </label>
                 <label>
-                  9Router API token
+                  توکن API 9Router
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -294,13 +294,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     onChange={(e) => setAiKey(e.target.value)}
                     placeholder={
                       settings.ai.api_key_saved
-                        ? "Saved securely — leave blank to keep"
-                        : "Copy the key from the 9Router dashboard"
+                        ? "به‌صورت امن ذخیره شده — برای حفظ آن خالی بگذارید"
+                        : "کلید را از داشبورد 9Router کپی کنید"
                     }
                   />
                 </label>
                 <label>
-                  Translation model
+                  مدل ترجمه
                   <Input
                     value={aiModel}
                     onChange={(e) => setAiModel(e.target.value)}
@@ -311,30 +311,30 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                 <div className="control-divider" />
                 <div className="section-heading">
                   <h3>
-                    <Send size={14} /> Telegram captions
+                    <Send size={14} /> کپشن‌های Telegram
                   </h3>
-                  <span>Auto caption format</span>
+                  <span>قالب کپشن خودکار</span>
                 </div>
                 <label>
-                  Caption system prompt
+                  پرامپت سیستمی کپشن
                   <Textarea
                     className="min-h-56 text-xs leading-relaxed"
                     rows={12}
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="Describe the exact caption format the AI should return…"
+                    placeholder="قالب دقیق کپشنی که AI باید برگرداند را توصیف کنید…"
                   />
                 </label>
                 <p className="hint">
-                  Auto caption sends this clip's English and Persian subtitles
-                  to your 9Router model together with this system prompt. Clear
-                  the field to restore the built-in Persian caption format.
+                  کپشن خودکار زیرنویس‌های انگلیسی و فارسی این کلیپ را همراه با
+                  این پرامپت سیستمی به مدل 9Router شما می‌فرستد. برای بازگرداندن
+                  قالب کپشن فارسی پیش‌فرض، فیلد را خالی کنید.
                 </p>
                 <p className="hint">
-                  Both tokens are encrypted at rest and never returned to the
-                  browser. The 9Router endpoint must be OpenAI-compatible (
-                  <code>/chat/completions</code>). Run 9Router locally or point
-                  this at your own gateway.
+                  هر دو توکن به‌صورت رمزنگاری‌شده ذخیره می‌شوند و هرگز به مرورگر
+                  بازگردانده نمی‌شوند. نقطه پایانی 9Router باید با OpenAI سازگار
+                  باشد (<code>/chat/completions</code>). 9Router را محلی اجرا
+                  کنید یا این را به درگاه خودتان متصل کنید.
                 </p>
                 <button className="secondary" disabled={busy}>
                   {busy ? (
@@ -342,7 +342,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   ) : (
                     <Check size={16} />
                   )}{" "}
-                  Save AI settings
+                  ذخیره تنظیمات AI
                 </button>
               </form>
             </section>
@@ -355,11 +355,11 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     <Bot size={22} />
                   </div>
                   <div>
-                    <h2>Telegram bot</h2>
-                    <p>Post clips through your bot, not your account.</p>
+                    <h2>ربات Telegram</h2>
+                    <p>کلیپ‌ها را از طریق ربات خودتان ارسال کنید، نه حساب شخصی.</p>
                   </div>
                   <span className={"badge " + (connected ? "success" : "")}>
-                    {connected ? "Online" : "Needs setup"}
+                    {connected ? "آنلاین" : "نیازمند تنظیم"}
                   </span>
                 </div>
                 {connected && (
@@ -370,10 +370,10 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       <small>
                         {settings.telegram_status.username
                           ? "@" + settings.telegram_status.username
-                          : "Bot credentials verified"}
+                          : "اعتبارنامه‌های ربات تأیید شد"}
                       </small>
                     </div>
-                    <span className="badge success">Connected</span>
+                    <span className="badge success">متصل</span>
                   </div>
                 )}
                 {!connected && settings.telegram_status.error && (
@@ -401,13 +401,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                         setBotToken("");
                         await load();
                       }
-                      if (saved) toast("Telegram bot settings saved.");
+                      if (saved) toast("تنظیمات ربات Telegram ذخیره شد.");
                     });
                   }}
                 >
                   <div className="form-row">
                     <label>
-                      API ID
+                      شناسه API
                       <Input
                         inputMode="numeric"
                         type="number"
@@ -418,7 +418,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       />
                     </label>
                     <label>
-                      API hash
+                      هش API
                       <Input
                         type="password"
                         autoComplete="new-password"
@@ -426,15 +426,15 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                         onChange={(e) => setHash(e.target.value)}
                         placeholder={
                           settings.telegram.api_hash_saved
-                            ? "Saved securely — leave blank to keep"
-                            : "32-character API hash"
+                            ? "به‌صورت امن ذخیره شده — برای حفظ آن خالی بگذارید"
+                            : "هش API ۳۲ کاراکتری"
                         }
                         required={!settings.telegram.api_hash_saved}
                       />
                     </label>
                   </div>
                   <label>
-                    Bot token
+                    توکن ربات
                     <Input
                       type="password"
                       autoComplete="new-password"
@@ -442,14 +442,14 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       onChange={(e) => setBotToken(e.target.value)}
                       placeholder={
                         settings.telegram.bot_token_saved
-                          ? "Saved securely — leave blank to keep"
-                          : "123456:ABC-DEF… from @BotFather"
+                          ? "به‌صورت امن ذخیره شده — برای حفظ آن خالی بگذارید"
+                          : "123456:ABC-DEF… از @BotFather"
                       }
                       required={!settings.telegram.bot_token_saved}
                     />
                   </label>
                   <p className="hint">
-                    Create a bot with{" "}
+                    یک ربات با{" "}
                     <a
                       href="https://t.me/BotFather"
                       target="_blank"
@@ -457,7 +457,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     >
                       @BotFather
                     </a>{" "}
-                    and an API application at{" "}
+                    و یک اپلیکیشن API در{" "}
                     <a
                       href="https://my.telegram.org/apps"
                       target="_blank"
@@ -465,8 +465,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     >
                       my.telegram.org
                     </a>
-                    . The API ID and hash unlock MTProto uploads, so clips
-                    larger than the 20 MB Bot API limit can be posted.
+                    . شناسه و هش API امکان آپلود MTProto را فراهم می‌کنند تا
+                    کلیپ‌های بزرگ‌تر از محدودیت 20 MB در Bot API هم ارسال شوند.
                   </p>
                   <button className="secondary" disabled={busy}>
                     {busy ? (
@@ -474,14 +474,14 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     ) : (
                       <Bot size={16} />
                     )}{" "}
-                    Save bot settings
+                    ذخیره تنظیمات ربات
                   </button>
                 </form>
                 <div className="note">
                   <Check size={16} />
                   <span>
-                    The bot token and API credentials are encrypted at rest. No
-                    personal Telegram account is signed in or stored.
+                    توکن ربات و اعتبارنامه‌های API به‌صورت رمزنگاری‌شده ذخیره
+                    می‌شوند. هیچ حساب شخصی Telegram وارد یا ذخیره نمی‌شود.
                   </span>
                 </div>
               </section>
@@ -491,11 +491,11 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     <Radio size={22} />
                   </div>
                   <div>
-                    <h2>Channels</h2>
-                    <p>Add a channel and confirm the bot can post there.</p>
+                    <h2>کانال‌ها</h2>
+                    <p>یک کانال اضافه کنید و تأیید کنید که ربات می‌تواند در آن ارسال کند.</p>
                   </div>
                   <span className="badge">
-                    {settings.telegram.channels.length || 0} channels
+                    {settings.telegram.channels.length || 0} کانال
                   </span>
                 </div>
                 {settings.telegram.channels.length ? (
@@ -516,15 +516,14 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                             </small>
                           ) : (
                             <small className="channel-ok">
-                              <Check size={12} /> Verified — bot is an
-                              administrator
+                              <Check size={12} /> تأیید شد — ربات مدیر است
                             </small>
                           )}
                         </div>
                         <button
                           className="icon-button"
-                          aria-label={`Verify ${item.name}`}
-                          title="Verify bot access"
+                          aria-label={`تأیید ${item.name}`}
+                          title="بررسی دسترسی ربات"
                           disabled={busy}
                           onClick={() =>
                             run(async () => {
@@ -533,7 +532,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                                 json("POST"),
                               );
                               await load();
-                              toast("Channel access verified.");
+                              toast("دسترسی کانال تأیید شد.");
                             })
                           }
                         >
@@ -541,17 +540,17 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                         </button>
                         <button
                           className="icon-button"
-                          aria-label={`Remove ${item.name}`}
+                          aria-label={`حذف ${item.name}`}
                           disabled={busy}
                           onClick={() => {
-                            if (confirm(`Remove ${item.name} from settings?`))
+                            if (confirm(`${item.name} از تنظیمات حذف شود؟`))
                               run(async () => {
                                 await api(
                                   `/telegram/channels/${item.id}`,
                                   json("DELETE"),
                                 );
                                 await load();
-                                toast("Channel removed.");
+                                toast("کانال حذف شد.");
                               });
                           }}
                         >
@@ -562,8 +561,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   </div>
                 ) : (
                   <p className="hint">
-                    No channels yet. Promote the bot to channel administrator,
-                    then add the channel below.
+                    هنوز کانالی وجود ندارد. ربات را به مدیر کانال ارتقا دهید،
+                    سپس کانال را در پایین اضافه کنید.
                   </p>
                 )}
                 <form
@@ -577,16 +576,16 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       );
                       setChannel("");
                       await load();
-                      toast("Channel verified and added.");
+                      toast("کانال تأیید و اضافه شد.");
                     });
                   }}
                 >
                   <label>
-                    Add a channel
+                    افزودن کانال
                     <Input
                       value={channel}
                       onChange={(e) => setChannel(e.target.value)}
-                      placeholder="@channel, t.me/channel or -100…"
+                      placeholder="@channel، t.me/channel یا -100…"
                       required
                     />
                   </label>
@@ -596,12 +595,12 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                     ) : (
                       <Plus size={16} />
                     )}{" "}
-                    Add & verify
+                    افزودن و تأیید
                   </button>
                 </form>
                 <p className="hint">
-                  The check confirms the bot is an administrator with permission
-                  to post messages. Save working bot credentials first.
+                  این بررسی تأیید می‌کند که ربات مدیر با مجوز ارسال پیام است.
+                  ابتدا اعتبارنامه‌های معتبر ربات را ذخیره کنید.
                 </p>
               </section>
             </div>
@@ -613,13 +612,13 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   <HardDrive size={22} />
                 </div>
                 <div>
-                  <h2>Storage</h2>
-                  <p>Keep room for your next project.</p>
+                  <h2>فضای ذخیره‌سازی</h2>
+                  <p>برای پروژه بعدی خود جا باز کنید.</p>
                 </div>
               </div>
               <div className="storage-total">
                 <strong>{size(settings.storage.used)}</strong>
-                <span>of {settings.storage.limit_gb} GB workspace limit</span>
+                <span>از {settings.storage.limit_gb} GB محدودیت فضای کاری</span>
               </div>
               <div className="meter large">
                 <i
@@ -629,8 +628,8 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                 />
               </div>
               <p className="hint">
-                {size(settings.storage.free)} available on the volume. A 1 GB
-                reserve is kept for safe processing.
+                {size(settings.storage.free)} روی حجم در دسترس است. 1 GB
+                به‌عنوان ذخیره برای پردازش ایمن نگه داشته می‌شود.
               </p>
               <form
                 className="limit-form"
@@ -642,12 +641,12 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       json("PUT", { limit_gb: limit }),
                     );
                     await load();
-                    toast("Storage limit saved.");
+                    toast("محدودیت فضای ذخیره‌سازی ذخیره شد.");
                   });
                 }}
               >
                 <label>
-                  Workspace limit (GB)
+                  محدودیت فضای کاری (GB)
                   <Input
                     type="number"
                     min={2}
@@ -657,7 +656,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   />
                 </label>
                 <button className="secondary" disabled={busy}>
-                  Save limit
+                  ذخیره محدودیت
                 </button>
               </form>
               <div className="cleanup-list">
@@ -673,10 +672,10 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                         <strong>
                           {
                             {
-                              sources: "Original videos",
-                              thumbnails: "Project thumbnails",
-                              renders: "Rendered clips",
-                              assets: "Music & watermarks",
+                              sources: "ویدیوهای اصلی",
+                              thumbnails: "تصاویر بندانگشتی پروژه",
+                              renders: "کلیپ‌های رندرشده",
+                              assets: "موسیقی و واترمارک‌ها",
                             }[name]
                           }
                         </strong>
@@ -685,16 +684,16 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                       {name !== "assets" && (
                         <button
                           className="icon-button"
-                          aria-label={`Clean ${name}`}
+                          aria-label={`پاک‌سازی ${name}`}
                           disabled={busy}
                           onClick={() => {
                             if (
                               confirm(
                                 name === "sources"
-                                  ? "Remove ALL original videos? Existing exports remain, but these projects cannot be rendered again."
+                                  ? "همه ویدیوهای اصلی حذف شوند؟ خروجی‌های موجود باقی می‌مانند، اما این پروژه‌ها دیگر قابل رندر نیستند."
                                   : name === "renders"
-                                    ? "Delete ALL rendered clips and rendered previews?"
-                                    : "Remove all project thumbnails? Projects keep their videos and renders.",
+                                    ? "همه کلیپ‌های رندرشده و پیش‌نمایش‌های رندرشده حذف شوند؟"
+                                    : "همه تصاویر بندانگشتی پروژه حذف شوند؟ پروژه‌ها ویدیوها و رندرهای خود را حفظ می‌کنند.",
                               )
                             )
                               run(async () => {
@@ -703,7 +702,7 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                                   json("POST"),
                                 );
                                 await load();
-                                toast("Files cleaned up.");
+                                toast("فایل‌ها پاک‌سازی شدند.");
                               });
                           }}
                         >
@@ -714,9 +713,9 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                   ))}
               </div>
               <p className="hint">
-                Cleanup is available when all active jobs finish. Delete a
-                project to remove its originals, assets, subtitles, thumbnails
-                and exports together.
+                پاک‌سازی زمانی در دسترس است که همه کارهای فعال تمام شوند. برای
+                حذف هم‌زمان فایل‌های اصلی، دارایی‌ها، زیرنویس‌ها، تصاویر
+                بندانگشتی و خروجی‌های یک پروژه، آن پروژه را حذف کنید.
               </p>
             </section>
           </div>

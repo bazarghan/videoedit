@@ -1175,3 +1175,75 @@
     transition: none !important;
   }
 }
+
+/* ==========================================================================
+   OnlyFarsiFans theme: the Telegram editor follows the panel's dark indigo
+   surfaces, IRANYekan type and compact radii.
+   ========================================================================== */
+
+.tg-editor,
+.tg-editor[data-theme="light"],
+.tg-editor[data-theme="dark"],
+.tg-editor[data-theme="auto"] {
+  --tg-font: "IRANYekanWeb", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --tg-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --tg-radius: 8px;
+
+  --tg-bg: #151618;
+  --tg-surface: #1a1b1d;
+  --tg-surface-2: #1e1f21;
+  --tg-surface-3: #222325;
+  --tg-fg: #cccccc;
+  --tg-muted-fg: #999999;
+  --tg-border: rgba(255, 255, 255, 0.1);
+  --tg-input: rgba(255, 255, 255, 0.15);
+  --tg-primary: #3f51b5;
+  --tg-primary-fg: #ffffff;
+  --tg-primary-soft: rgba(63, 81, 181, 0.2);
+  --tg-danger: #e57373;
+  --tg-ring: rgba(63, 81, 181, 0.45);
+  --tg-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.65);
+
+  --tg-src-bg: #101113;
+  --tg-src-fg: #cccccc;
+  --tg-src-gutter-bg: #151618;
+  --tg-src-gutter-fg: #666666;
+  --tg-src-border: rgba(255, 255, 255, 0.08);
+  --tg-src-tag: #9fa8da;
+  --tg-src-attribute: #ce93d8;
+  --tg-src-string: #80cbc4;
+  --tg-src-comment: #666666;
+  --tg-src-punctuation: #999999;
+
+  color-scheme: dark;
+  border-radius: 8px;
+  font-family: var(--tg-font);
+}
+
+.tg-editor .tg-header {
+  background: #1a1b1d;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.tg-editor .tg-header-icon {
+  border-radius: 6px;
+}
+.tg-editor .tg-btn,
+.tg-editor .tg-segment,
+.tg-editor .tg-icon-btn {
+  border-radius: 4px;
+}
+.tg-editor .tg-btn--primary {
+  border-color: #3f51b5;
+  background: #3f51b5;
+}
+.tg-editor .tg-btn--primary:hover {
+  border-color: #5c6bc0;
+  background: #5c6bc0;
+}
+.tg-editor .tg-segment button {
+  border-radius: 4px;
+}
+.tg-editor .tg-segment button[aria-pressed="true"] {
+  background: #2a2b2d;
+}

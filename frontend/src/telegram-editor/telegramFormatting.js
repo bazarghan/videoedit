@@ -29,20 +29,20 @@ const lines = (value) => String(value ?? '').split('\n').filter((line) => line.t
 const anchorName = (value) => {
   const name = String(value ?? '').trim()
   if (!ANCHOR_NAME.test(name)) {
-    throw new Error('Use an anchor name that starts with a letter and contains letters, digits, - or _.')
+    throw new Error('نام لنگر را با یک حرف شروع کنید و فقط از حروف، ارقام، - یا _ استفاده کنید.')
   }
   return name
 }
 
 const checkListType = (value) => {
   const type = String(value ?? '').trim()
-  if (type && !LIST_TYPES.has(type)) throw new Error('List type must be one of 1, a, A, i, I.')
+  if (type && !LIST_TYPES.has(type)) throw new Error('نوع فهرست باید یکی از 1، a، A، i یا I باشد.')
   return type
 }
 
 const buildList = (selectedText, checkedBoxes = false) => {
   const items = lines(selectedText)
-  if (!items.length) throw new Error('Select the list lines first, one item per line.')
+  if (!items.length) throw new Error('ابتدا خطوط فهرست را انتخاب کنید؛ هر آیتم در یک خط.')
   const rendered = items.map((raw) => {
     let text = raw.trim()
     let checked = ''
@@ -58,38 +58,38 @@ const buildList = (selectedText, checkedBoxes = false) => {
 
 const buildTable = (values, selectedText) => {
   const rows = lines(selectedText)
-  if (!rows.length) throw new Error('Select the table rows first, one row per line using | between cells.')
+  if (!rows.length) throw new Error('ابتدا سطرهای جدول را انتخاب کنید؛ در هر خط یک سطر و سلول‌ها را با | جدا کنید.')
   const parsed = rows.map((row) => row.split('|').map((cell) => cell.trim()))
   if (parsed.some((cells) => cells.length < 2)) {
-    throw new Error('Each table row needs at least two cells separated by |.')
+    throw new Error('هر سطر جدول باید حداقل دو سلول داشته باشد که با | جدا شده‌اند.')
   }
   if (Math.max(...parsed.map((cells) => cells.length)) > 20) {
-    throw new Error('Rich tables support up to 20 columns.')
+    throw new Error('جدول‌های غنی حداکثر ۲۰ ستون را پشتیبانی می‌کنند.')
   }
   const align = String(values.align ?? '')
   const valign = String(values.valign ?? '')
   if (align && !['left', 'center', 'right'].includes(align)) {
-    throw new Error('Choose a supported horizontal alignment.')
+    throw new Error('یک ترازبندی افقی پشتیبانی‌شده انتخاب کنید.')
   }
   if (valign && !['top', 'middle', 'bottom'].includes(valign)) {
-    throw new Error('Choose a supported vertical alignment.')
+    throw new Error('یک ترازبندی عمودی پشتیبانی‌شده انتخاب کنید.')
   }
   const positiveInteger = (name, label) => {
     const raw = String(values[name] ?? '').trim()
     if (!raw) return 1
     if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) < 1) {
-      throw new Error(`${label} must be a positive whole number.`)
+      throw new Error(`${label} باید یک عدد صحیح مثبت باشد.`)
     }
     return Number(raw)
   }
-  const colspan = positiveInteger('colspan', 'Columns to merge')
-  const rowspan = positiveInteger('rowspan', 'Rows to merge')
-  const mergeRow = positiveInteger('mergeRow', 'Merge starting row') - 1
-  const mergeColumn = positiveInteger('mergeColumn', 'Merge starting column') - 1
+  const colspan = positiveInteger('colspan', 'ستون‌های ادغام')
+  const rowspan = positiveInteger('rowspan', 'سطرهای ادغام')
+  const mergeRow = positiveInteger('mergeRow', 'سطر شروع ادغام') - 1
+  const mergeColumn = positiveInteger('mergeColumn', 'ستون شروع ادغام') - 1
   const merging = colspan > 1 || rowspan > 1
   if (merging && (mergeRow + rowspan > parsed.length
       || parsed.slice(mergeRow, mergeRow + rowspan).some((cells) => mergeColumn + colspan > cells.length))) {
-    throw new Error('The merged cell must fit within the selected table rows and columns.')
+    throw new Error('سلول ادغام‌شده باید در محدودهٔ سطرها و ستون‌های جدول انتخابی جای بگیرد.')
   }
   const sharedAttrs = `${align ? ` align="${align}"` : ''}${valign ? ` valign="${valign}"` : ''}`
   const flags = ['bordered', 'striped', 'compact'].filter((flag) => values[flag]).join(' ')
@@ -122,21 +122,21 @@ export const RICH_FORMAT_TYPES = new Set([
 export const buildTelegramFormat = (type, values, selectedText = '', textFormat = FORMAT_HTML) => {
   const escaped = escapeTelegramHtml
   if (textFormat !== FORMAT_RICH && RICH_FORMAT_TYPES.has(type)) {
-    throw new Error('Switch the editor to Rich Message to use this tool.')
+    throw new Error('برای استفاده از این ابزار، ویرایشگر را به «پیام غنی» تغییر دهید.')
   }
   switch (type) {
     case 'link':
       if (!isTelegramLink(values.url)) {
-        throw new Error('Enter a valid https://, http://, tg://, mailto: or tel: link.')
+        throw new Error('یک پیوند معتبر https://، http://، tg://، mailto: یا tel: وارد کنید.')
       }
       return { open: `<a href="${escaped(values.url)}">`, close: '</a>', text: escaped(values.text) }
     case 'mention':
-      if (!/^[1-9]\d*$/.test(values.userId)) throw new Error('Enter a numeric Telegram user ID.')
+      if (!/^[1-9]\d*$/.test(values.userId)) throw new Error('شناسه کاربری عددی Telegram وارد کنید.')
       return { open: `<a href="tg://user?id=${values.userId}">`, close: '</a>', text: escaped(values.text) }
     case 'pre': {
       const language = values.language.trim()
       if (language && !/^[a-zA-Z0-9_+#.-]+$/.test(language)) {
-        throw new Error('Enter a language name such as python, javascript or c++.')
+        throw new Error('نام زبان را وارد کنید؛ مانند python، javascript یا c++.')
       }
       return {
         open: language ? `<pre><code class="language-${escaped(language)}">` : '<pre>',
@@ -145,20 +145,20 @@ export const buildTelegramFormat = (type, values, selectedText = '', textFormat 
       }
     }
     case 'emoji': {
-      if (!/^[1-9]\d*$/.test(values.emojiId)) throw new Error('Enter a numeric custom emoji ID.')
+      if (!/^[1-9]\d*$/.test(values.emojiId)) throw new Error('شناسه عددی ایموجی سفارشی را وارد کنید.')
       const segments = [...new Intl.Segmenter().segment(values.text)]
       if (segments.length !== 1 || !/\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3/u.test(values.text)) {
-        throw new Error('Enter one fallback emoji, such as 👍.')
+        throw new Error('یک ایموجی جایگزین وارد کنید؛ مانند 👍.')
       }
       return { open: `<tg-emoji emoji-id="${values.emojiId}">`, close: '</tg-emoji>', text: escaped(values.text) }
     }
     case 'time': {
       const unix = Number(values.unix)
       if (!/^\d+$/.test(values.unix) || !Number.isSafeInteger(unix) || unix > Math.floor(Date.now() / 1000) + 1098 * 86400) {
-        throw new Error('Enter a Unix timestamp between 0 and three years from now.')
+        throw new Error('زمان یونیکس را بین ۰ و سه سال آینده وارد کنید.')
       }
       if (!/^(?:r|w?[dD]?[tT]?)$/.test(values.format)) {
-        throw new Error('Use a Telegram time format such as wDT, t, r, or leave it empty.')
+        throw new Error('از یک قالب زمان Telegram مانند wDT، t یا r استفاده کنید یا آن را خالی بگذارید.')
       }
       return {
         open: `<tg-time unix="${unix}"${values.format ? ` format="${escaped(values.format)}"` : ''}>`,
@@ -168,7 +168,7 @@ export const buildTelegramFormat = (type, values, selectedText = '', textFormat 
     }
     case 'heading': {
       const level = Number(values.level)
-      if (!Number.isInteger(level) || level < 1 || level > 6) throw new Error('Choose a heading level from 1 to 6.')
+      if (!Number.isInteger(level) || level < 1 || level > 6) throw new Error('سطح سرتیتر را از ۱ تا ۶ انتخاب کنید.')
       return { open: `<h${level}>`, close: `</h${level}>`, text: selectedText }
     }
     case 'paragraph':
@@ -191,7 +191,7 @@ export const buildTelegramFormat = (type, values, selectedText = '', textFormat 
       const start = String(values.start ?? '').trim()
       const listType = checkListType(values.numbering)
       if (start && (!/^-?\d+$/.test(start) || !Number.isSafeInteger(Number(start)))) {
-        throw new Error('Ordered list start must be a whole number.')
+        throw new Error('شروع فهرست شماره‌دار باید یک عدد صحیح باشد.')
       }
       const attrs = `${start ? ` start="${escaped(start)}"` : ''}${listType ? ` type="${listType}"` : ''}${values.reversed ? ' reversed' : ''}`
       return { open: `<ol${attrs}>\n`, close: '\n</ol>', text: buildList(selectedText) }
@@ -200,7 +200,7 @@ export const buildTelegramFormat = (type, values, selectedText = '', textFormat 
       return { open: '', close: '', text: buildTable(values, selectedText) }
     case 'details': {
       const summary = String(values.summary ?? '').trim()
-      if (!summary) throw new Error('Enter a summary line for the collapsible section.')
+      if (!summary) throw new Error('یک خط خلاصه برای بخش جمع‌شونده وارد کنید.')
       return {
         open: `<details${values.open ? ' open' : ''}><summary>${escaped(summary)}</summary>\n`,
         close: '\n</details>',
@@ -226,6 +226,6 @@ export const buildTelegramFormat = (type, values, selectedText = '', textFormat 
         text: escaped(values.source || selectedText).replaceAll('{', '&#123;').replaceAll('}', '&#125;'),
       }
     default:
-      throw new Error('Unsupported Telegram format.')
+      throw new Error('قالب Telegram پشتیبانی نمی‌شود.')
   }
 }

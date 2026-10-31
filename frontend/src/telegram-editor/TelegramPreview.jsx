@@ -13,7 +13,7 @@ export function TelegramPreview({ text, format = 'html', title = 'Telegram Bot' 
         <div>
           <p className="tg-preview-name">{title}</p>
           <p className="tg-preview-kind">
-            {format === FORMAT_RICH ? 'Rich Message' : 'Regular HTML'} preview
+            {format === FORMAT_RICH ? 'پیش‌نمایش پیام غنی' : 'پیش‌نمایش HTML ساده'}
           </p>
         </div>
       </div>
@@ -22,12 +22,12 @@ export function TelegramPreview({ text, format = 'html', title = 'Telegram Bot' 
         <div className="tg-preview-bubble">
           {text
             ? <TelegramRichText text={text} format={format} />
-            : <p className="tg-preview-empty">Your message preview appears here.</p>}
+            : <p className="tg-preview-empty">پیش‌نمایش پیام شما اینجا نمایش داده می‌شود.</p>}
         </div>
       </div>
 
       <p className="tg-preview-note">
-        Approximate preview. Telegram may render the final message slightly differently.
+        پیش‌نمایش تقریبی. ممکن است Telegram پیام نهایی را کمی متفاوت نمایش دهد.
       </p>
     </div>
   )

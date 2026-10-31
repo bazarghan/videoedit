@@ -33,25 +33,25 @@ import {
 import { buildTelegramFormat, FORMAT_RICH } from "./telegramFormatting";
 
 const baseFormats = [
-  { title: "Bold", icon: Bold, open: "<b>", close: "</b>" },
-  { title: "Italic", icon: Italic, open: "<i>", close: "</i>" },
-  { title: "Underline", icon: Underline, open: "<u>", close: "</u>" },
-  { title: "Strikethrough", icon: Strikethrough, open: "<s>", close: "</s>" },
+  { title: "ضخیم", icon: Bold, open: "<b>", close: "</b>" },
+  { title: "مورب", icon: Italic, open: "<i>", close: "</i>" },
+  { title: "زیرخط", icon: Underline, open: "<u>", close: "</u>" },
+  { title: "خط‌خورده", icon: Strikethrough, open: "<s>", close: "</s>" },
   {
-    title: "Spoiler",
+    title: "اسپویلر",
     icon: EyeOff,
     open: "<tg-spoiler>",
     close: "</tg-spoiler>",
   },
-  { title: "Code", icon: Code2, open: "<code>", close: "</code>" },
+  { title: "کد", icon: Code2, open: "<code>", close: "</code>" },
   {
-    title: "Blockquote",
+    title: "نقل‌قول",
     icon: Quote,
     open: "<blockquote>",
     close: "</blockquote>",
   },
   {
-    title: "Expandable blockquote",
+    title: "نقل‌قول جمع‌شونده",
     icon: ChevronsUpDown,
     open: "<blockquote expandable>",
     close: "</blockquote>",
@@ -59,72 +59,72 @@ const baseFormats = [
 ];
 
 const richFormats = [
-  { title: "Mark", icon: Highlighter, open: "<mark>", close: "</mark>" },
-  { title: "Superscript", icon: Superscript, open: "<sup>", close: "</sup>" },
-  { title: "Subscript", icon: Subscript, open: "<sub>", close: "</sub>" },
+  { title: "هایلایت", icon: Highlighter, open: "<mark>", close: "</mark>" },
+  { title: "بالانویس", icon: Superscript, open: "<sup>", close: "</sup>" },
+  { title: "زیرنویس", icon: Subscript, open: "<sub>", close: "</sub>" },
 ];
 
 const tools = [
   {
     type: "link",
-    title: "Insert link",
+    title: "درج پیوند",
     icon: Link,
     fields: [
       { key: "url", label: "URL", placeholder: "https://example.com" },
-      { key: "text", label: "Link text", placeholder: "" },
+      { key: "text", label: "متن پیوند", placeholder: "" },
     ],
   },
   {
     type: "mention",
-    title: "Mention user",
+    title: "اشاره به کاربر",
     icon: AtSign,
     fields: [
-      { key: "userId", label: "Telegram user ID", placeholder: "123456789" },
-      { key: "text", label: "Mention text", placeholder: "" },
+      { key: "userId", label: "شناسه کاربر Telegram", placeholder: "123456789" },
+      { key: "text", label: "متن اشاره", placeholder: "" },
     ],
   },
   {
     type: "pre",
-    title: "Code block",
+    title: "بلوک کد",
     icon: FileCode,
     fields: [
-      { key: "language", label: "Language (optional)", placeholder: "python" },
+      { key: "language", label: "زبان (اختیاری)", placeholder: "python" },
     ],
   },
   {
     type: "emoji",
-    title: "Custom emoji",
+    title: "ایموجی سفارشی",
     icon: Sparkles,
     fields: [
       {
         key: "emojiId",
-        label: "Custom emoji ID",
+        label: "شناسه ایموجی سفارشی",
         placeholder: "5368324170671202286",
       },
-      { key: "text", label: "Fallback emoji", placeholder: "👍" },
+      { key: "text", label: "ایموجی جایگزین", placeholder: "👍" },
     ],
-    help: "Requires a bot eligible for custom emoji. The preview shows the fallback emoji.",
+    help: "به یک bot واجد شرایط برای ایموجی سفارشی نیاز دارد. پیش‌نمایش، ایموجی جایگزین را نشان می‌دهد.",
   },
   {
     type: "time",
-    title: "Date and time",
+    title: "تاریخ و زمان",
     icon: CalendarClock,
     fields: [
-      { key: "unix", label: "Unix timestamp (seconds)", placeholder: "" },
-      { key: "format", label: "Time format (optional)", placeholder: "wDT" },
-      { key: "text", label: "Fallback text", placeholder: "" },
+      { key: "unix", label: "زمان یونیکس (ثانیه)", placeholder: "" },
+      { key: "format", label: "قالب زمان (اختیاری)", placeholder: "wDT" },
+      { key: "text", label: "متن جایگزین", placeholder: "" },
     ],
-    help: "Formats: wDT = weekday, date and time; t = time; r = relative. Telegram uses the reader’s locale.",
+    help: "قالب‌ها: wDT = روز هفته، تاریخ و زمان؛ t = زمان؛ r = نسبی. Telegram از زبان‌بندی خواننده استفاده می‌کند.",
   },
   {
     type: "heading",
-    title: "Heading",
+    title: "سرتیتر",
     icon: Heading2,
     richOnly: true,
     fields: [
       {
         key: "level",
-        label: "Level",
+        label: "سطح",
         type: "select",
         options: [
           ["1", "H1"],
@@ -139,42 +139,42 @@ const tools = [
   },
   {
     type: "paragraph",
-    title: "Paragraph",
+    title: "پاراگراف",
     icon: Pilcrow,
     richOnly: true,
     fields: [],
   },
   {
     type: "footer",
-    title: "Footer",
+    title: "پاورقی",
     icon: Pilcrow,
     richOnly: true,
     fields: [],
   },
   {
     type: "divider",
-    title: "Divider",
+    title: "جداکننده",
     icon: SeparatorHorizontal,
     richOnly: true,
     fields: [],
   },
   {
     type: "ul",
-    title: "Bulleted list",
+    title: "فهرست نشانه‌دار",
     icon: List,
     richOnly: true,
     fields: [],
   },
   {
     type: "ol",
-    title: "Numbered list",
+    title: "فهرست شماره‌دار",
     icon: ListOrdered,
     richOnly: true,
     fields: [
-      { key: "start", label: "Start at (optional)", placeholder: "1" },
+      { key: "start", label: "شروع از (اختیاری)", placeholder: "1" },
       {
         key: "numbering",
-        label: "Numbering",
+        label: "شماره‌گذاری",
         type: "select",
         options: [
           ["", "1, 2, 3"],
@@ -184,48 +184,48 @@ const tools = [
           ["I", "I, II, III"],
         ],
       },
-      { key: "reversed", label: "Count down", type: "checkbox" },
+      { key: "reversed", label: "شمارش معکوس", type: "checkbox" },
     ],
   },
   {
     type: "checklist",
-    title: "Checklist",
+    title: "چک‌لیست",
     icon: ListChecks,
     richOnly: true,
     fields: [],
   },
   {
     type: "table",
-    title: "Table",
+    title: "جدول",
     icon: Table2,
     richOnly: true,
     fields: [
-      { key: "caption", label: "Caption (optional)", placeholder: "" },
+      { key: "caption", label: "عنوان (اختیاری)", placeholder: "" },
       {
         key: "align",
-        label: "Horizontal cell alignment",
+        label: "ترازبندی افقی سلول",
         type: "select",
         options: [
-          ["", "Default"],
-          ["left", "Left"],
-          ["center", "Center"],
-          ["right", "Right"],
+          ["", "پیش‌فرض"],
+          ["left", "چپ"],
+          ["center", "وسط"],
+          ["right", "راست"],
         ],
       },
       {
         key: "valign",
-        label: "Vertical cell alignment",
+        label: "ترازبندی عمودی سلول",
         type: "select",
         options: [
-          ["", "Default"],
-          ["top", "Top"],
-          ["middle", "Middle"],
-          ["bottom", "Bottom"],
+          ["", "پیش‌فرض"],
+          ["top", "بالا"],
+          ["middle", "وسط"],
+          ["bottom", "پایین"],
         ],
       },
       {
         key: "mergeRow",
-        label: "Merge starting row (optional)",
+        label: "ادغام از سطر (اختیاری)",
         type: "number",
         min: 1,
         step: 1,
@@ -234,7 +234,7 @@ const tools = [
       },
       {
         key: "mergeColumn",
-        label: "Merge starting column (optional)",
+        label: "ادغام از ستون (اختیاری)",
         type: "number",
         min: 1,
         max: 20,
@@ -244,7 +244,7 @@ const tools = [
       },
       {
         key: "colspan",
-        label: "Columns to merge (optional)",
+        label: "ستون‌های ادغام (اختیاری)",
         type: "number",
         min: 1,
         max: 20,
@@ -254,64 +254,64 @@ const tools = [
       },
       {
         key: "rowspan",
-        label: "Rows to merge (optional)",
+        label: "سطرهای ادغام (اختیاری)",
         type: "number",
         min: 1,
         step: 1,
         placeholder: "1",
         optional: true,
       },
-      { key: "bordered", label: "Bordered", type: "checkbox" },
-      { key: "striped", label: "Striped", type: "checkbox" },
-      { key: "compact", label: "Compact", type: "checkbox" },
+      { key: "bordered", label: "دارای حاشیه", type: "checkbox" },
+      { key: "striped", label: "راه‌راه", type: "checkbox" },
+      { key: "compact", label: "فشرده", type: "checkbox" },
     ],
   },
   {
     type: "details",
-    title: "Collapsible section",
+    title: "بخش جمع‌شونده",
     icon: ChevronsUpDown,
     richOnly: true,
     fields: [
-      { key: "summary", label: "Summary", placeholder: "" },
-      { key: "open", label: "Expanded by default", type: "checkbox" },
+      { key: "summary", label: "خلاصه", placeholder: "" },
+      { key: "open", label: "به‌طور پیش‌فرض باز", type: "checkbox" },
     ],
   },
   {
     type: "anchor",
-    title: "Anchor",
+    title: "لنگر",
     icon: Anchor,
     richOnly: true,
-    fields: [{ key: "name", label: "Anchor name", placeholder: "chapter-1" }],
+    fields: [{ key: "name", label: "نام لنگر", placeholder: "chapter-1" }],
   },
   {
     type: "reference",
-    title: "Reference",
+    title: "مرجع",
     icon: BookMarked,
     richOnly: true,
-    fields: [{ key: "name", label: "Reference name", placeholder: "note-1" }],
+    fields: [{ key: "name", label: "نام مرجع", placeholder: "note-1" }],
   },
   {
     type: "referenceLink",
-    title: "Link to anchor",
+    title: "پیوند به لنگر",
     icon: Link,
     richOnly: true,
-    fields: [{ key: "name", label: "Anchor name", placeholder: "chapter-1" }],
+    fields: [{ key: "name", label: "نام لنگر", placeholder: "chapter-1" }],
   },
   {
     type: "math",
-    title: "Formula",
+    title: "فرمول",
     icon: Sigma,
     richOnly: true,
     fields: [
-      { key: "source", label: "LaTeX source", placeholder: "x^2 + y^2" },
+      { key: "source", label: "منبع LaTeX", placeholder: "x^2 + y^2" },
     ],
   },
   {
     type: "mathBlock",
-    title: "Block formula",
+    title: "فرمول بلوکی",
     icon: Sigma,
     richOnly: true,
-    fields: [{ key: "source", label: "LaTeX source", placeholder: "E = mc^2" }],
+    fields: [{ key: "source", label: "منبع LaTeX", placeholder: "E = mc^2" }],
   },
 ];
 
@@ -320,11 +320,11 @@ const LIST_TOOLS = ["ul", "ol", "checklist"];
 const helpFor = (item) =>
   item.help ??
   (LIST_TOOLS.includes(item.type)
-    ? "Enter one item per line, or start from selected lines. Each line becomes a list item."
+    ? "هر آیتم را در یک خط وارد کنید، یا از خطوط انتخاب‌شده شروع کنید. هر خط به یک آیتم فهرست تبدیل می‌شود."
     : item.type === "table"
-      ? "Select one row per line using | between cells. The first line becomes the header. Alignment applies to all cells."
+      ? "در هر خط یک سطر بنویسید و سلول‌ها را با | جدا کنید. اولین خط سرستون می‌شود. ترازبندی روی همهٔ سلول‌ها اعمال می‌شود."
       : item.type === "details"
-        ? "The selected text becomes the collapsible body; write it after inserting if nothing was selected."
+        ? "متن انتخاب‌شده بدنهٔ جمع‌شونده می‌شود؛ اگر چیزی انتخاب نشده بود، آن را پس از درج بنویسید."
         : undefined);
 
 const defaultsFor = (item) => {
@@ -412,7 +412,7 @@ export const TelegramFormattingToolbar = ({
       if (missing) {
         setError({
           key: missing.key,
-          message: `Enter ${missing.label.toLowerCase()}.`,
+          message: `${missing.label} را وارد کنید.`,
         });
         focusField(missing.key);
         return;
@@ -436,28 +436,28 @@ export const TelegramFormattingToolbar = ({
         link: "url",
         mention: "userId",
         pre: "language",
-        emoji: /fallback/.test(message) ? "text" : "emojiId",
-        time: /format/.test(message) ? "format" : "unix",
+        emoji: /جایگزین/.test(message) ? "text" : "emojiId",
+        time: /قالب/.test(message) ? "format" : "unix",
         ol: "start",
         details: "summary",
         math: "source",
         mathBlock: "source",
       };
-      let key = /Select the list/.test(message)
+      let key = /خطوط فهرست/.test(message)
         ? "rows"
         : keys[tool.type] || "name";
       if (tool.type === "table") {
-        key = /Columns to merge/.test(message)
+        key = /ستون‌های ادغام/.test(message)
           ? "colspan"
-          : /Rows to merge/.test(message)
+          : /سطرهای ادغام/.test(message)
             ? "rowspan"
-            : /Merge starting column/.test(message)
+            : /ستون شروع ادغام/.test(message)
               ? "mergeColumn"
-              : /merge|merged|Merge starting row/.test(message)
+              : /ادغام/.test(message)
                 ? "mergeRow"
-                : /horizontal/.test(message)
+                : /افقی/.test(message)
                   ? "align"
-                  : /vertical/.test(message)
+                  : /عمودی/.test(message)
                     ? "valign"
                     : "rows";
         setTableTab(
@@ -659,21 +659,21 @@ export const TelegramFormattingToolbar = ({
   };
 
   const groups = [
-    { key: "link", title: "Link", icon: Link, direct: "link" },
+    { key: "link", title: "پیوند", icon: Link, direct: "link" },
     ...(rich
       ? [
           {
             key: "lists",
-            title: "Lists",
+            title: "فهرست‌ها",
             icon: List,
             types: ["ul", "ol", "checklist"],
           },
-          { key: "table", title: "Table", icon: Table2, direct: "table" },
+          { key: "table", title: "جدول", icon: Table2, direct: "table" },
         ]
       : []),
     {
       key: "insert",
-      title: "Insert",
+      title: "درج",
       icon: Plus,
       types: [
         "mention",
@@ -688,7 +688,7 @@ export const TelegramFormattingToolbar = ({
     },
     {
       key: "more",
-      title: "More",
+      title: "بیشتر",
       icon: Ellipsis,
       types: [
         "paragraph",
@@ -717,8 +717,8 @@ export const TelegramFormattingToolbar = ({
             <button
               type="button"
               className="tg-icon-btn"
-              aria-label="Back to tools"
-              title="Back to tools"
+              aria-label="بازگشت به ابزارها"
+              title="بازگشت به ابزارها"
               onClick={() => {
                 setTool(null);
                 setError(null);
@@ -740,12 +740,12 @@ export const TelegramFormattingToolbar = ({
           <div
             className="tg-segment tg-segment--sm"
             role="group"
-            aria-label="Table settings"
+            aria-label="تنظیمات جدول"
           >
             {[
-              ["create", "Create"],
-              ["style", "Alignment"],
-              ["merge", "Merge cells"],
+              ["create", "ایجاد"],
+              ["style", "ترازبندی"],
+              ["merge", "ادغام سلول‌ها"],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -764,16 +764,16 @@ export const TelegramFormattingToolbar = ({
             tableTab === "create" &&
             renderField({
               key: "rows",
-              label: "Table rows",
+              label: "سطرهای جدول",
               type: "textarea",
-              placeholder: "Name | Status\nTehran | Active",
+              placeholder: "نام | وضعیت\nتهران | فعال",
             })}
           {LIST_TOOLS.includes(tool.type) &&
             renderField({
               key: "rows",
-              label: "List items",
+              label: "آیتم‌های فهرست",
               type: "textarea",
-              placeholder: "One item per line",
+              placeholder: "هر آیتم در یک خط",
             })}
           {tool.fields
             .filter(
@@ -784,7 +784,7 @@ export const TelegramFormattingToolbar = ({
             .map(renderField)}
           {table && tableTab === "style" && (
             <fieldset className="tg-fieldset">
-              <legend className="tg-legend">Appearance</legend>
+              <legend className="tg-legend">ظاهر</legend>
               {tool.fields
                 .filter((field) => field.type === "checkbox")
                 .map(renderField)}
@@ -798,10 +798,10 @@ export const TelegramFormattingToolbar = ({
           {table ? (
             <p className="tg-help">
               {tableTab === "create"
-                ? "One row per line, with | between cells (up to 20 columns). The first row is the header."
+                ? "در هر خط یک سطر، با | بین سلول‌ها (حداکثر ۲۰ ستون). سطر اول سرستون است."
                 : tableTab === "style"
-                  ? "Alignment and style apply to every cell."
-                  : "Choose the starting row and column, counting from 1. Merged text is kept with line breaks."}
+                  ? "ترازبندی و سبک روی همهٔ سلول‌ها اعمال می‌شود."
+                  : "سطر و ستون شروع را انتخاب کنید؛ شمارش از ۱ است. متن ادغام‌شده با شکست خط حفظ می‌شود."}
             </p>
           ) : (
             helpFor(tool) && <p className="tg-help">{helpFor(tool)}</p>
@@ -820,10 +820,10 @@ export const TelegramFormattingToolbar = ({
             className="tg-btn"
             onClick={() => closePanel(true)}
           >
-            Cancel
+            لغو
           </button>
           <button type="submit" className="tg-btn tg-btn--primary">
-            Insert formatting
+            درج قالب‌بندی
           </button>
         </div>
       </form>
@@ -834,7 +834,7 @@ export const TelegramFormattingToolbar = ({
     <div
       className="tg-toolbar"
       role="group"
-      aria-label="Telegram formatting"
+      aria-label="قالب‌بندی Telegram"
       ref={toolbarRef}
     >
       {baseFormats.slice(0, 3).map(formatButton)}

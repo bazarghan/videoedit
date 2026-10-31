@@ -161,11 +161,11 @@ export default function ProjectDefaultsPanel({
   }
   async function save() {
     if (watermark.end !== null && watermark.end <= watermark.start) {
-      onError("The watermark end must follow its start.");
+      onError("پایان واترمارک باید بعد از شروع آن باشد.");
       return;
     }
     if (watermark.kind === "image" && !watermark.asset_id && !imageFile) {
-      onError("Choose a default watermark image.");
+      onError("یک تصویر واترمارک پیش‌فرض انتخاب کنید.");
       return;
     }
     setBusy(true);
@@ -189,7 +189,7 @@ export default function ProjectDefaultsPanel({
       }
       setDraft(saved);
       onSaved(saved);
-      toast("Project defaults saved. New imports will use these settings.");
+      toast("پیش‌فرض‌های پروژه ذخیره شد. واردکردن‌های جدید از این تنظیمات استفاده می‌کنند.");
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -207,7 +207,7 @@ export default function ProjectDefaultsPanel({
       setImageFile(null);
       setUploadKey((old) => old + 1);
       onSaved(saved);
-      toast("Built-in project defaults restored for new imports.");
+      toast("پیش‌فرض‌های داخلی پروژه برای واردکردن‌های جدید بازگردانده شد.");
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -221,16 +221,16 @@ export default function ProjectDefaultsPanel({
           <SlidersHorizontal size={22} />
         </div>
         <div>
-          <h2>Project defaults</h2>
-          <p>Your preferred subtitles and watermark, ready for every import.</p>
+          <h2>پیش‌فرض‌های پروژه</h2>
+          <p>زیرنویس و واترمارک دلخواه شما، آماده برای هر بار واردکردن.</p>
         </div>
       </div>
       <p className="hint defaults-intro">
-        Saved defaults apply to newly imported videos. Existing projects keep
-        their own settings. You can also save defaults from the editor’s
-        Captions and Mark tabs.
+        پیش‌فرض‌های ذخیره‌شده برای ویدیوهای تازه واردشده اعمال می‌شوند.
+        پروژه‌های موجود تنظیمات خودشان را حفظ می‌کنند. می‌توانید پیش‌فرض‌ها را
+        از تب‌های Captions و Mark در ویرایشگر هم ذخیره کنید.
       </p>
-      <div className="defaults-tabs" role="tablist" aria-label="Project defaults">
+      <div className="defaults-tabs" role="tablist" aria-label="پیش‌فرض‌های پروژه">
         <button
           type="button"
           role="tab"
@@ -238,7 +238,7 @@ export default function ProjectDefaultsPanel({
           className={tab === "subtitles" ? "active" : ""}
           onClick={() => setTab("subtitles")}
         >
-          Subtitles
+          زیرنویس
         </button>
         <button
           type="button"
@@ -247,7 +247,7 @@ export default function ProjectDefaultsPanel({
           className={tab === "watermark" ? "active" : ""}
           onClick={() => setTab("watermark")}
         >
-          Watermark
+          واترمارک
         </button>
       </div>
       <form
@@ -259,15 +259,15 @@ export default function ProjectDefaultsPanel({
         <fieldset disabled={busy} className="defaults-fields">
           <div className="defaults-columns">
             <div hidden={tab !== "subtitles"}>
-              <h3>Subtitles</h3>
+              <h3>زیرنویس</h3>
               <Check
                 checked={subtitles.burn}
                 onChange={(value) => subtitle("burn", value)}
               >
-                Add captions to exports
+                افزودن کپشن به خروجی‌ها
               </Check>
               <SelectField
-                label="Font family"
+                label="خانواده فونت"
                 value={subtitles.font}
                 options={fonts}
                 onChange={(value) => subtitle("font", value)}
@@ -276,10 +276,10 @@ export default function ProjectDefaultsPanel({
                 checked={subtitles.bold}
                 onChange={(value) => subtitle("bold", value)}
               >
-                Bold
+                ضخیم
               </Check>
               <NumberField
-                label="Font size (px)"
+                label="اندازه فونت (px)"
                 value={subtitles.size}
                 min={12}
                 max={160}
@@ -287,19 +287,19 @@ export default function ProjectDefaultsPanel({
               />
               <div className="form-row">
                 <ColorField
-                  label="Text color"
+                  label="رنگ متن"
                   value={subtitles.color}
                   onChange={(value) => subtitle("color", value)}
                 />
                 <ColorField
-                  label="Outline color"
+                  label="رنگ خط دور"
                   value={subtitles.outline_color}
                   onChange={(value) => subtitle("outline_color", value)}
                 />
               </div>
               <div className="form-row">
                 <NumberField
-                  label="Outline"
+                  label="خط دور"
                   value={subtitles.outline}
                   min={0}
                   max={12}
@@ -307,7 +307,7 @@ export default function ProjectDefaultsPanel({
                   onChange={(value) => subtitle("outline", value)}
                 />
                 <NumberField
-                  label="Shadow"
+                  label="سایه"
                   value={subtitles.shadow}
                   min={0}
                   max={12}
@@ -319,11 +319,11 @@ export default function ProjectDefaultsPanel({
                 checked={subtitles.box}
                 onChange={(value) => subtitle("box", value)}
               >
-                Background box
+                کادر پس‌زمینه
               </Check>
               {subtitles.box && (
                 <NumberField
-                  label="Box opacity (0–1)"
+                  label="شفافیت کادر (0–1)"
                   value={subtitles.box_opacity}
                   min={0}
                   max={1}
@@ -333,13 +333,13 @@ export default function ProjectDefaultsPanel({
               )}
               <div className="form-row">
                 <SelectField
-                  label="Position"
+                  label="موقعیت"
                   value={subtitles.position}
                   options={["bottom", "middle", "top"]}
                   onChange={(value) => subtitle("position", value)}
                 />
                 <SelectField
-                  label="Alignment"
+                  label="ترازبندی"
                   value={subtitles.align}
                   options={["left", "center", "right"]}
                   onChange={(value) => subtitle("align", value)}
@@ -347,14 +347,14 @@ export default function ProjectDefaultsPanel({
               </div>
               <div className="form-row">
                 <NumberField
-                  label="Margin (px)"
+                  label="حاشیه (px)"
                   value={subtitles.margin}
                   min={0}
                   max={400}
                   onChange={(value) => subtitle("margin", value)}
                 />
                 <NumberField
-                  label="Timing offset (s)"
+                  label="جابه‌جایی زمانی (s)"
                   value={subtitles.offset}
                   min={-600}
                   max={600}
@@ -366,18 +366,18 @@ export default function ProjectDefaultsPanel({
                 checked={subtitles.preserve_ass}
                 onChange={(value) => subtitle("preserve_ass", value)}
               >
-                Preserve original ASS styling
+                حفظ استایل ASS اصلی
               </Check>
               <Check
                 checked={subtitles.soft}
                 onChange={(value) => subtitle("soft", value)}
               >
-                Use the video's original soft subtitles
+                استفاده از زیرنویس‌های نرم اصلی ویدیو
               </Check>
               <div className="control-divider" />
-              <h3>Persian subtitles</h3>
+              <h3>زیرنویس فارسی</h3>
               <SelectField
-                label="Persian font family"
+                label="خانواده فونت فارسی"
                 value={subtitles.fa_font}
                 options={fonts}
                 onChange={(value) => subtitle("fa_font", value)}
@@ -386,10 +386,10 @@ export default function ProjectDefaultsPanel({
                 checked={subtitles.fa_bold}
                 onChange={(value) => subtitle("fa_bold", value)}
               >
-                Bold Persian text
+                متن فارسی ضخیم
               </Check>
               <NumberField
-                label="Persian font size (px)"
+                label="اندازه فونت فارسی (px)"
                 value={subtitles.fa_size}
                 min={12}
                 max={160}
@@ -397,19 +397,19 @@ export default function ProjectDefaultsPanel({
               />
               <div className="form-row">
                 <ColorField
-                  label="Persian color"
+                  label="رنگ فارسی"
                   value={subtitles.fa_color}
                   onChange={(value) => subtitle("fa_color", value)}
                 />
                 <ColorField
-                  label="Persian outline color"
+                  label="رنگ خط دور فارسی"
                   value={subtitles.fa_outline_color}
                   onChange={(value) => subtitle("fa_outline_color", value)}
                 />
               </div>
               <div className="form-row">
                 <NumberField
-                  label="Persian outline"
+                  label="خط دور فارسی"
                   value={subtitles.fa_outline}
                   min={0}
                   max={12}
@@ -417,7 +417,7 @@ export default function ProjectDefaultsPanel({
                   onChange={(value) => subtitle("fa_outline", value)}
                 />
                 <NumberField
-                  label="Gap above Persian (px)"
+                  label="فاصله بالای فارسی (px)"
                   value={subtitles.gap}
                   min={0}
                   max={200}
@@ -426,20 +426,21 @@ export default function ProjectDefaultsPanel({
                 />
               </div>
               <p className="hint">
-                Defaults match Viditor: English in white Arial above, Persian
-                in yellow IRAN Yekan ExtraBold below. Embedded source soft
-                subtitles are ignored unless this option is on.
+                پیش‌فرض‌ها با Viditor هم‌خوان‌اند: انگلیسی با Arial سفید در بالا
+                و فارسی با IRAN Yekan ExtraBold زرد در پایین. زیرنویس‌های نرم
+                تعبیه‌شده در منبع نادیده گرفته می‌شوند مگر اینکه این گزینه روشن
+                باشد.
               </p>
             </div>
             <div hidden={tab !== "watermark"}>
-              <h3>Watermark</h3>
+              <h3>واترمارک</h3>
               <SelectField
-                label="Watermark type"
+                label="نوع واترمارک"
                 value={watermark.kind}
                 options={[
-                  ["none", "No watermark"],
-                  ["text", "Text"],
-                  ["image", "Image"],
+                  ["none", "بدون واترمارک"],
+                  ["text", "متن"],
+                  ["image", "تصویر"],
                 ]}
                 onChange={(value) => mark("kind", value)}
               />
@@ -453,7 +454,7 @@ export default function ProjectDefaultsPanel({
                   ) : (
                     <>
                       <label>
-                        Watermark text
+                        متن واترمارک
                         <Input
                           className="h-9 text-xs"
                           value={watermark.text}
@@ -463,20 +464,20 @@ export default function ProjectDefaultsPanel({
                         />
                       </label>
                       <SelectField
-                        label="Font family"
+                        label="خانواده فونت"
                         value={watermark.font}
                         options={fonts}
                         onChange={(value) => mark("font", value)}
                       />
                       <NumberField
-                        label="Text size (px)"
+                        label="اندازه متن (px)"
                         value={watermark.size}
                         min={12}
                         max={200}
                         onChange={(value) => mark("size", value)}
                       />
                       <ColorField
-                        label="Text color"
+                        label="رنگ متن"
                         value={watermark.color}
                         onChange={(value) => mark("color", value)}
                       />
@@ -487,7 +488,7 @@ export default function ProjectDefaultsPanel({
                           mark("template", templateFromLegacy(watermark))
                         }
                       >
-                        <Stamp size={16} /> Use multi-element template
+                        <Stamp size={16} /> استفاده از قالب چندعنصری
                       </button>
                     </>
                   )}
@@ -497,8 +498,8 @@ export default function ProjectDefaultsPanel({
                 <>
                   <label>
                     {watermark.asset_id
-                      ? "Replace saved image (PNG or JPEG)"
-                      : "Default image (PNG or JPEG)"}
+                      ? "جایگزینی تصویر ذخیره‌شده (PNG یا JPEG)"
+                      : "تصویر پیش‌فرض (PNG یا JPEG)"}
                     <input
                       key={uploadKey}
                       type="file"
@@ -509,11 +510,11 @@ export default function ProjectDefaultsPanel({
                     />
                   </label>
                   <p className="hint">
-                    The saved image is copied into each new project, so it stays
-                    available if another project is deleted.
+                    تصویر ذخیره‌شده در هر پروژه جدید کپی می‌شود، بنابراین حتی
+                    اگر پروژه دیگری حذف شود در دسترس می‌ماند.
                   </p>
                   <NumberField
-                    label="Image width (fraction of frame)"
+                    label="عرض تصویر (کسری از کادر)"
                     value={watermark.width}
                     min={0.02}
                     max={0.8}
@@ -526,7 +527,7 @@ export default function ProjectDefaultsPanel({
                 <>
                   {(!watermark.template || watermark.kind === "image") && (
                     <NumberField
-                      label="Opacity (0–1)"
+                      label="شفافیت (0–1)"
                       value={watermark.opacity}
                       min={0}
                       max={1}
@@ -535,7 +536,7 @@ export default function ProjectDefaultsPanel({
                     />
                   )}
                   <label>
-                    Corner preset
+                    پیش‌تنظیم گوشه
                     <Select
                       value=""
                       onValueChange={(value) => {
@@ -551,19 +552,19 @@ export default function ProjectDefaultsPanel({
                       }}
                     >
                       <SelectTrigger className="h-9 text-xs">
-                        <SelectValue placeholder="Choose a corner…" />
+                        <SelectValue placeholder="یک گوشه انتخاب کنید…" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="tl">Top left</SelectItem>
-                        <SelectItem value="tr">Top right</SelectItem>
-                        <SelectItem value="bl">Bottom left</SelectItem>
-                        <SelectItem value="br">Bottom right</SelectItem>
+                        <SelectItem value="tl">بالا چپ</SelectItem>
+                        <SelectItem value="tr">بالا راست</SelectItem>
+                        <SelectItem value="bl">پایین چپ</SelectItem>
+                        <SelectItem value="br">پایین راست</SelectItem>
                       </SelectContent>
                     </Select>
                   </label>
                   <div className="form-row">
                     <NumberField
-                      label="Horizontal position (0–1)"
+                      label="موقعیت افقی (0–1)"
                       value={watermark.x}
                       min={0}
                       max={1}
@@ -571,7 +572,7 @@ export default function ProjectDefaultsPanel({
                       onChange={(value) => mark("x", value)}
                     />
                     <NumberField
-                      label="Vertical position (0–1)"
+                      label="موقعیت عمودی (0–1)"
                       value={watermark.y}
                       min={0}
                       max={1}
@@ -580,7 +581,7 @@ export default function ProjectDefaultsPanel({
                     />
                   </div>
                   <NumberField
-                    label="Margin (px)"
+                    label="حاشیه (px)"
                     value={watermark.margin}
                     min={0}
                     max={400}
@@ -588,21 +589,21 @@ export default function ProjectDefaultsPanel({
                   />
                   <div className="form-row">
                     <NumberField
-                      label="Visible from (s)"
+                      label="نمایان از (s)"
                       value={watermark.start}
                       min={0}
                       step={0.1}
                       onChange={(value) => mark("start", value)}
                     />
                     <label>
-                      Until (s)
+                      تا (s)
                       <Input
                         className="h-9 text-xs"
                         type="number"
                         min={0.1}
                         step={0.1}
                         value={watermark.end ?? ""}
-                        placeholder="End of clip"
+                        placeholder="پایان کلیپ"
                         onChange={(e) =>
                           mark(
                             "end",
@@ -615,16 +616,16 @@ export default function ProjectDefaultsPanel({
                     </label>
                   </div>
                   <p className="hint">
-                    Times are relative to the clip start. Leave Until blank to
-                    show the watermark through the end of the clip.
+                    زمان‌ها نسبت به شروع کلیپ محاسبه می‌شوند. برای نمایش
+                    واترمارک تا پایان کلیپ، «تا» را خالی بگذارید.
                   </p>
                 </>
               )}
             </div>
           </div>
           <p className="hint">
-            Sizes and margins use a 1080-pixel reference height and scale with
-            the video output.
+            اندازه‌ها و حاشیه‌ها بر اساس ارتفاع مرجع ۱۰۸۰ پیکسل محاسبه و با
+            خروجی ویدیو مقیاس می‌شوند.
           </p>
           <div className="form-actions">
             <button className="primary" type="submit">
@@ -633,14 +634,14 @@ export default function ProjectDefaultsPanel({
               ) : (
                 <Save size={16} />
               )}{" "}
-              Save project defaults
+              ذخیره پیش‌فرض‌های پروژه
             </button>
             <button
               className="text-link"
               type="button"
               onClick={() => void reset()}
             >
-              Reset to built-in defaults
+              بازگردانی به پیش‌فرض‌های داخلی
             </button>
           </div>
         </fieldset>
