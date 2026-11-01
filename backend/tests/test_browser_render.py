@@ -286,3 +286,14 @@ def test_browser_plan_includes_image_watermark_and_music(client, local_footage, 
     assert f"/assets/{watermark['asset_id']}.png" in args
     assert f"/assets/{track['asset_id']}.wav" in args
     assert "amix=inputs=2" in args
+
+
+def test_local_import_rejects_av1(client, local_footage):
+    metadata = asyncio.run(media.probe(local_footage["source"]))
+    metadata["video_codec"] = "av1"
+    response = client.post(
+        "/api/import/local",
+        json={"name": "AV1", "metadata": metadata, "thumbnail": ""},
+    )
+    assert response.status_code == 400
+    assert "AV1" in response.text

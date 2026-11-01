@@ -41,7 +41,12 @@ import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
 import TelegramPostPage from "./TelegramPostPage";
-import { probeLocalFile, projectThumbnail } from "./lib/ffmpegEngine";
+import {
+  browserCodecError,
+  isBrowserCodecSupported,
+  probeLocalFile,
+  projectThumbnail,
+} from "./lib/ffmpegEngine";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
 
@@ -203,7 +208,11 @@ export default function App() {
         setProxy(emptyProxy);
         setUseProxy(false);
       } else await saveProxy();
-      toast(remove ? "پروکسی ذخیره‌شده حذف شد." : "پروکسی SOCKS5 با اطمینان ذخیره شد.");
+      toast(
+        remove
+          ? "پروکسی ذخیره‌شده حذف شد."
+          : "پروکسی SOCKS5 با اطمینان ذخیره شد.",
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -226,7 +235,9 @@ export default function App() {
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 400)
           throw new Error(
-            typeof data.detail === "string" ? data.detail : "بارگذاری ناموفق بود.",
+            typeof data.detail === "string"
+              ? data.detail
+              : "بارگذاری ناموفق بود.",
           );
         openEditor(data.project_id);
         toast("ویدیو بارگذاری شد. ویرایشگر آماده می‌شود…");
@@ -245,18 +256,22 @@ export default function App() {
     setBusy(true);
     setProgress(5);
     setLocalStatus("در حال آماده‌سازی موتور رندر مرورگر…");
+    let fallbackStarted = false;
     try {
       const metadata = await probeLocalFile(file);
+      if (!isBrowserCodecSupported(metadata.video_codec)) {
+        throw new Error(browserCodecError(metadata.video_codec));
+      }
       setProgress(55);
       setLocalStatus("در حال ساخت پیش‌نمایش پروژه…");
       let thumbnail = "";
-      let thumbnailFailed = false;
       try {
         thumbnail = await projectThumbnail(file, metadata);
       } catch {
-        // A thumbnail is cosmetic; a codec the wasm build cannot decode must
-        // not stop the user from creating the project and rendering later.
-        thumbnailFailed = true;
+        // The same single-frame decode is the first real test that the wasm
+        // core supports this codec. Do not create a project that cannot be
+        // rendered.
+        throw new Error(browserCodecError(metadata.video_codec));
       }
       setProgress(80);
       setLocalStatus("در حال ساخت پروژه…");
@@ -273,17 +288,29 @@ export default function App() {
       setName("");
       openEditor(result.project_id);
       toast(
-        thumbnailFailed
-          ? "پروژه ساخته شد، اما این کدک در موتور رندر مرورگر خوانده نشد. رندر ممکن است ناموفق باشد."
-          : "پروژه در حالت مرورگر ساخته شد. فایل اصلی از دستگاه شما خارج نمی‌شود.",
+        "پروژه در حالت مرورگر ساخته شد. فایل اصلی از دستگاه شما خارج نمی‌شود.",
       );
       await refresh();
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      if (
+        message.includes("ffmpeg.wasm") &&
+        confirm(
+          `${message}\n\nآیا فایل (${size(file.size)}) برای رندر روی سرور آپلود شود؟`,
+        )
+      ) {
+        fallbackStarted = true;
+        setLocalStatus("در حال آپلود فایل برای رندر روی سرور…");
+        upload(file);
+        return;
+      }
+      setError(message);
     } finally {
-      setBusy(false);
-      setProgress(0);
-      setLocalStatus("");
+      if (!fallbackStarted) {
+        setBusy(false);
+        setProgress(0);
+        setLocalStatus("");
+      }
     }
   }
   function showClip(clip: Clip) {
@@ -325,8 +352,7 @@ export default function App() {
                 <div className="nav-group" key={n.id}>
                   <button
                     className={
-                      "nav-item nav-parent" +
-                      (page === n.id ? " active" : "")
+                      "nav-item nav-parent" + (page === n.id ? " active" : "")
                     }
                     aria-expanded={settingsMenuOpen}
                     aria-controls="workspace-settings-submenu"
@@ -355,12 +381,9 @@ export default function App() {
                     >
                       <button
                         className={
-                          "nav-subitem " +
-                          (page === "settings" ? "active" : "")
+                          "nav-subitem " + (page === "settings" ? "active" : "")
                         }
-                        aria-current={
-                          page === "settings" ? "page" : undefined
-                        }
+                        aria-current={page === "settings" ? "page" : undefined}
                         onClick={() => setPage("settings")}
                       >
                         <SlidersHorizontal size={14} />
@@ -451,7 +474,9 @@ export default function App() {
                   <br />
                   از همین‌جا شروع می‌شود<span className="accent">.</span>
                 </h1>
-                <p>ویدیو را بیاورید. لحظه‌تان را پیدا کنید. مال خودتانش کنید.</p>
+                <p>
+                  ویدیو را بیاورید. لحظه‌تان را پیدا کنید. مال خودتانش کنید.
+                </p>
               </div>
               <button className="primary" onClick={() => setImportOpen(true)}>
                 <Plus size={18} /> پروژه جدید
@@ -1034,8 +1059,8 @@ export default function App() {
                     : "یا برای انتخاب فایل کلیک کنید"}
                 </span>
                 <small>
-                  فایل اصلی از دستگاه شما خارج نمی‌شود · فقط کلیپ رندرشده
-                  آپلود می‌شود
+                  فایل اصلی از دستگاه شما خارج نمی‌شود · فقط کلیپ رندرشده آپلود
+                  می‌شود
                 </small>
                 <input
                   type="file"
@@ -1066,9 +1091,7 @@ export default function App() {
             <div className="modal-heading">
               <div>
                 <span className="eyebrow">
-                  {openClip.preview
-                    ? "پیش‌نمایش رندر واقعی"
-                    : "کلیپ آماده شما"}
+                  {openClip.preview ? "پیش‌نمایش رندر واقعی" : "کلیپ آماده شما"}
                 </span>
                 <h2>{openClip.name}</h2>
               </div>

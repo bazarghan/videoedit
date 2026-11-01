@@ -6,6 +6,18 @@ const CORE_BASE = "/ffmpeg";
 const CORE_URL = `${CORE_BASE}/ffmpeg-core.js`;
 const CORE_WASM = `${CORE_BASE}/ffmpeg-core.wasm`;
 
+/** Codecs the bundled ffmpeg.wasm core cannot decode. */
+const UNSUPPORTED_CODECS = new Set(["av1", "vvc", "h266"]);
+
+export function isBrowserCodecSupported(codec?: string | null) {
+  return !codec || !UNSUPPORTED_CODECS.has(codec.toLowerCase());
+}
+
+export function browserCodecError(codec?: string | null) {
+  const name = (codec || "").toUpperCase();
+  return `${name ? `کدک ${name}` : "این فایل"} را موتور رندر مرورگر (ffmpeg.wasm) نمی‌تواند دیکد کند. برای این فایل از «بارگذاری فایل» استفاده کنید تا روی سرور رندر شود، یا ویدیو را به H.264 تبدیل کنید.`;
+}
+
 const TEXT_SUBS = new Set([
   "subrip",
   "ass",

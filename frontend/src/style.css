@@ -6563,3 +6563,11 @@ input[autocomplete="username"] {
   height: 0;
   opacity: 0;
 }
+
+.browser-codec-warning {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid #7a4040;
+  border-radius: 8px;
+  background: #3a2020;
+}

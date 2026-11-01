@@ -52,8 +52,10 @@ import {
 import WatermarkTemplateEditor from "./WatermarkTemplate";
 import { templateFromLegacy, watermarkVisibleAt } from "./watermark";
 import {
+  browserCodecError,
   cleanCoverFrame,
   coverCandidates as extractCoverCandidates,
+  isBrowserCodecSupported,
   engineThreads,
   extractClipAudio,
   renderLocalClip,
@@ -270,6 +272,8 @@ export default function Editor({
   const local = !!project?.metadata.local;
   const localReady = local && !!localFile;
   const canRender = local ? localReady : !!project?.has_source;
+  const browserRenderBlocked =
+    local && !isBrowserCodecSupported(project?.metadata.video_codec);
   const [localRender, setLocalRender] = useState<RenderProgress | null>(null);
   const localAbort = useRef<AbortController | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
@@ -367,7 +371,10 @@ export default function Editor({
     !!edit &&
     (coverFrame.time < edit.start || coverFrame.time >= edit.end);
   const autoSubtitleBlocked =
-    !canRender || autoSubtitlesReady || autoSubtitleTooLong;
+    !canRender ||
+    browserRenderBlocked ||
+    autoSubtitlesReady ||
+    autoSubtitleTooLong;
   const autoSubtitleTitle = local
     ? "زیرنویس خودکار در مرورگر فقط صدای بازه انتخاب‌شده را (به‌صورت یک فایل MP3 کوچک) آپلود می‌کند."
     : autoSubtitlesReady
@@ -902,6 +909,10 @@ export default function Editor({
     if (!edit) return;
     if (local) {
       if (!localFile || !project) return;
+      if (browserRenderBlocked) {
+        onError(browserCodecError(project.metadata.video_codec));
+        return;
+      }
       setBusy(true);
       setLocalRender({ phase: "preparing", progress: 0 });
       const controller = new AbortController();
@@ -1586,12 +1597,20 @@ export default function Editor({
           </button>
           <button
             className="secondary"
-            disabled={busy || !canRender || !!activeRender || !!localRender}
+            disabled={
+              busy ||
+              !canRender ||
+              browserRenderBlocked ||
+              !!activeRender ||
+              !!localRender
+            }
             onClick={() => render(true)}
             title={
-              activeRender
-                ? "رندر این پروژه در حال انجام است."
-                : "رندر پیش‌نمایش شش‌ثانیه‌ای"
+              browserRenderBlocked
+                ? browserCodecError(project.metadata.video_codec)
+                : activeRender
+                  ? "رندر این پروژه در حال انجام است."
+                  : "رندر پیش‌نمایش شش‌ثانیه‌ای"
             }
           >
             <Play size={15} /> پیش‌نمایش رندر
@@ -1602,17 +1621,20 @@ export default function Editor({
               busy ||
               edit.end <= edit.start ||
               !canRender ||
+              browserRenderBlocked ||
               !!activeRender ||
               !!localRender ||
               renderedCurrent
             }
             onClick={() => render(false)}
             title={
-              renderedCurrent
-                ? "این برش دقیق قبلاً رندر شده است. آن را از خروجی‌های اخیر باز کنید یا ابتدا کلیپ را تغییر دهید."
-                : activeRender
-                  ? "رندر این پروژه در حال انجام است."
-                  : undefined
+              browserRenderBlocked
+                ? browserCodecError(project.metadata.video_codec)
+                : renderedCurrent
+                  ? "این برش دقیق قبلاً رندر شده است. آن را از خروجی‌های اخیر باز کنید یا ابتدا کلیپ را تغییر دهید."
+                  : activeRender
+                    ? "رندر این پروژه در حال انجام است."
+                    : undefined
             }
           >
             {renderedCurrent ? <CheckIcon size={16} /> : <Download size={16} />}{" "}
@@ -1644,6 +1666,12 @@ export default function Editor({
           )}
         </div>
       </div>
+
+      {browserRenderBlocked && (
+        <p className="inline-error browser-codec-warning">
+          {browserCodecError(project.metadata.video_codec)}
+        </p>
+      )}
 
       <div className="editor-layout">
         <div className="editor-workspace">

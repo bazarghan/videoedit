@@ -428,6 +428,9 @@ async def import_upload(file: UploadFile = File(...)):
         raise
 
 
+BROWSER_UNSUPPORTED_CODECS = {"av1", "vvc", "h266"}
+
+
 @app.post("/api/import/local")
 async def import_local(body: LocalImport):
     """Create a project whose source stays in the browser.
@@ -438,6 +441,12 @@ async def import_local(body: LocalImport):
     meta = body.metadata.model_dump()
     if not meta["video_codec"]:
         raise ValueError("Choose a video with a readable video stream.")
+    if meta["video_codec"].lower() in BROWSER_UNSUPPORTED_CODECS:
+        raise ValueError(
+            f"{meta['video_codec'].upper()} cannot be decoded by the browser "
+            "renderer. Upload the file through the normal import flow so the "
+            "server can render it, or convert it to H.264."
+        )
     meta["local"] = True
     if not meta["video_duration"]:
         meta["video_duration"] = meta["duration"]
