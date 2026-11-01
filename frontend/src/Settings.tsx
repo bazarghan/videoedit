@@ -9,8 +9,6 @@ import {
   Sparkles,
   Mic,
   Languages,
-  SlidersHorizontal,
-  ChevronRight,
   Bot,
   Radio,
   Plus,
@@ -22,12 +20,21 @@ import ProjectDefaultsPanel from "./ProjectDefaults";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
 import { useConfirm } from "./components/ui/confirm-dialog";
+import { settingsSections, type SettingsSectionId } from "./settingsSections";
 type Props = {
+  section: SettingsSectionId;
+  onSection: (section: SettingsSectionId) => void;
   onSettings: (s: Settings) => void;
   onError: (s: string) => void;
   toast: (s: string) => void;
 };
-export default function SettingsPage({ onSettings, onError, toast }: Props) {
+export default function SettingsPage({
+  section,
+  onSection,
+  onSettings,
+  onError,
+  toast,
+}: Props) {
   const confirm = useConfirm();
   const [settings, setSettings] = useState<Settings | null>(null),
     [apiId, setApiId] = useState(""),
@@ -42,7 +49,6 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
     [elevenModel, setElevenModel] = useState("scribe_v2"),
     [elevenMax, setElevenMax] = useState(6),
     [elevenKey, setElevenKey] = useState(""),
-    [section, setSection] = useState("defaults"),
     [busy, setBusy] = useState(false);
   async function load() {
     const s = await api<Settings>("/settings");
@@ -76,83 +82,37 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
       </div>
     );
   const connected = settings.telegram_status.connected;
-  const sections = [
-    {
-      id: "defaults",
-      label: "پیش‌فرض‌های ویرایش",
-      description: "پیش‌تنظیم‌های کپشن و واترمارک",
-      icon: SlidersHorizontal,
-    },
-    {
-      id: "subtitles",
-      label: "زیرنویس خودکار",
-      description: "زیرنویس، کپشن، 9Router",
-      icon: Sparkles,
-      badge:
-        settings.ai.api_key_saved && settings.elevenlabs.api_key_saved
-          ? "آماده"
-          : "",
-    },
-    {
-      id: "telegram",
-      label: "Telegram",
-      description: "ربات، کانال‌ها و ارسال",
-      icon: Send,
-      badge: connected
-        ? settings.telegram.channels.length
-          ? `${settings.telegram.channels.length} کانال`
-          : "متصل"
-        : "",
-    },
-    {
-      id: "storage",
-      label: "فضای ذخیره‌سازی",
-      description: "فضا و پاک‌سازی",
-      icon: HardDrive,
-    },
-  ];
+  const activeSection =
+    settingsSections.find((item) => item.id === section) ??
+    settingsSections[0];
   return (
     <div className="page settings-page">
       <div className="page-heading compact">
         <div>
-          <span className="eyebrow">فضای کاری‌ای که برای شما کار می‌کند</span>
-          <h1>تنظیمات</h1>
-          <p>
-            برای مدیریت پیش‌فرض‌ها، سرویس‌های زیرنویس، Telegram و فضای
-            ذخیره‌سازی، یک بخش را انتخاب کنید.
-          </p>
+          <span className="eyebrow">تنظیمات فضای کاری</span>
+          <h1>{activeSection.label}</h1>
+          <p>{activeSection.description}</p>
         </div>
       </div>
-      <div className="settings-shell">
-        <nav className="settings-nav" aria-label="بخش‌های تنظیمات">
-          <span className="eyebrow">تنظیمات فضای کاری</span>
-          {sections.map((item) => {
-            const Icon = item.icon;
+      <div className="settings-content">
+        <div className="settings-mobile-tabs" role="tablist" aria-label="بخش‌های تنظیمات">
+          {settingsSections.map((item) => {
+            const ItemIcon = item.icon;
             return (
               <button
+                type="button"
                 key={item.id}
-                className={
-                  "settings-nav-item " + (section === item.id ? "active" : "")
-                }
-                aria-current={section === item.id ? "page" : undefined}
-                onClick={() => setSection(item.id)}
+                role="tab"
+                aria-selected={section === item.id}
+                className={section === item.id ? "active" : ""}
+                onClick={() => onSection(item.id)}
               >
-                <span className="settings-nav-icon">
-                  <Icon size={18} />
-                </span>
-                <span className="settings-nav-copy">
-                  <strong>{item.label}</strong>
-                  <small>{item.description}</small>
-                </span>
-                {item.badge && (
-                  <span className="settings-nav-badge">{item.badge}</span>
-                )}
-                <ChevronRight className="settings-nav-arrow" size={15} />
+                <ItemIcon size={14} />
+                {item.label}
               </button>
             );
           })}
-        </nav>
-        <div className="settings-content">
+        </div>
           <div hidden={section !== "defaults"}>
             <ProjectDefaultsPanel
               initial={settings.project_defaults}
@@ -733,7 +693,6 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
             </section>
           </div>
         </div>
-      </div>
     </div>
   );
 }

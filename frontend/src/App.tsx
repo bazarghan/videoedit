@@ -23,7 +23,6 @@ import {
   HardDrive,
   Sparkles,
   ChevronDown,
-  SlidersHorizontal,
 } from "lucide-react";
 import {
   api,
@@ -41,6 +40,7 @@ import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
 import TelegramPostPage from "./TelegramPostPage";
+import { settingsSections, type SettingsSectionId } from "./settingsSections";
 import {
   browserCodecError,
   isBrowserCodecSupported,
@@ -103,6 +103,8 @@ export default function App() {
     [proxyBusy, setProxyBusy] = useState(false);
   const [postClip, setPostClip] = useState<Clip | null>(null);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSectionId>("defaults");
   const [localFiles, setLocalFiles] = useState<Record<string, File>>({});
   const [localStatus, setLocalStatus] = useState("");
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
@@ -385,16 +387,28 @@ export default function App() {
                       className="nav-submenu"
                       id="workspace-settings-submenu"
                     >
-                      <button
-                        className={
-                          "nav-subitem " + (page === "settings" ? "active" : "")
-                        }
-                        aria-current={page === "settings" ? "page" : undefined}
-                        onClick={() => setPage("settings")}
-                      >
-                        <SlidersHorizontal size={14} />
-                        تنظیمات فضای کاری
-                      </button>
+                      {settingsSections.map((section) => {
+                        const SectionIcon = section.icon;
+                        const selected =
+                          page === "settings" && settingsSection === section.id;
+                        return (
+                          <button
+                            key={section.id}
+                            className={
+                              "nav-subitem " + (selected ? "active" : "")
+                            }
+                            aria-current={selected ? "page" : undefined}
+                            onClick={() => {
+                              setSettingsSection(section.id);
+                              setPage("settings");
+                              setSettingsMenuOpen(true);
+                            }}
+                          >
+                            <SectionIcon size={14} />
+                            {section.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -459,7 +473,10 @@ export default function App() {
             {page === "settings" && (
               <>
                 {" "}
-                <ChevronRight size={14} /> تنظیمات فضای کاری
+                <ChevronRight size={14} />{" "}
+                {settingsSections.find(
+                  (section) => section.id === settingsSection,
+                )?.label || "تنظیمات"}
               </>
             )}
           </span>
@@ -889,6 +906,8 @@ export default function App() {
         )}
         {page === "settings" && (
           <SettingsPage
+            section={settingsSection}
+            onSection={setSettingsSection}
             onSettings={setSettings}
             onError={setError}
             toast={toast}

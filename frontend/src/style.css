@@ -6633,3 +6633,32 @@ input[autocomplete="username"] {
 .confirm-danger:hover {
   background: #bf4747;
 }
+
+.settings-mobile-tabs {
+  display: none;
+}
+@media (max-width: 950px) {
+  .settings-mobile-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 16px;
+    padding-bottom: 4px;
+  }
+  .settings-mobile-tabs button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .settings-mobile-tabs button.active {
+    background: var(--brand-soft);
+    border-color: var(--brand-30);
+    color: var(--brand-text);
+  }
+}
