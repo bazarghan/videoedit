@@ -1,6 +1,7 @@
 import { RefObject, useEffect, useState } from "react";
 import { Image, LoaderCircle } from "lucide-react";
 import { api, Clip, Job, json } from "./types";
+import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 
 type Props = {
@@ -58,48 +59,63 @@ export default function TelegramCover({
     try {
       await api(`/clips/${clip.id}/cover`, json("PUT", { time: timestamp }));
       await refresh();
-      toast("به‌روزرسانی کاور در صف قرار گرفت. پیش از ارسال این کلیپ آماده خواهد بود.");
+      toast(
+        "به‌روزرسانی کاور در صف قرار گرفت. پیش از ارسال این کلیپ آماده خواهد بود.",
+      );
     } catch (error) {
       onError((error as Error).message);
     } finally {
       setBusy(false);
     }
   }
+
+  const status = preparing
+    ? "در حال آماده‌سازی کاور…"
+    : cover?.origin === "prerender"
+      ? "ذخیره‌شده پیش از کپشن‌ها"
+      : cover?.mode === "manual"
+        ? "فریم انتخاب‌شده"
+        : "فریم خودکار";
+
   return (
-    <section className="telegram-cover">
-      <h3>
-        <Image size={17} /> کاور Telegram
-      </h3>
-      <div className="cover-picker">
-        <div className="cover-image">
+    <section className="flex flex-col gap-4 border-t border-border-tertiary pt-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h3 className="flex items-center gap-2 text-sm font-medium text-text-primary">
+            <Image size={16} /> کاور Telegram
+          </h3>
+          <p className="text-sm text-text-secondary">
+            فریم تمیز و بدون زیرنویس که بالای پست در تلگرام نمایش داده می‌شود.
+          </p>
+        </div>
+        <span className="flex h-[26px] items-center rounded-[4px] border border-border-tertiary bg-elevation-2 px-2 text-xs text-text-secondary">
+          {status}
+          {cover && !preparing ? (
+            <>
+              {" · "}
+              <span dir="ltr">{cover.time.toFixed(2)}</span> ثانیه
+            </>
+          ) : null}
+        </span>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+        <div className="aspect-video overflow-hidden rounded-[6px] border border-border-tertiary bg-black">
           {clip.has_cover ? (
             <img
               src={`/api/media/clip/${clip.id}/cover?v=${cover?.revision}`}
               alt="کاور انتخاب‌شدهٔ Telegram"
+              className="size-full object-contain"
             />
           ) : (
-            <Image size={26} />
+            <div className="flex size-full items-center justify-center text-text-tertiary">
+              <Image size={26} />
+            </div>
           )}
         </div>
-        <div className="cover-settings">
-          <span className="badge">
-            {preparing
-              ? "در حال آماده‌سازی کاور…"
-              : cover?.origin === "prerender"
-                ? "ذخیره‌شده پیش از کپشن‌ها"
-                : cover?.mode === "manual"
-                  ? "فریم انتخاب‌شده"
-                  : "فریم خودکار"}
-            {cover && !preparing ? (
-              <>
-                {" · "}
-                <span dir="ltr">{cover.time.toFixed(2)}</span> ثانیه
-              </>
-            ) : (
-              ""
-            )}
-          </span>
-          <label>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5 text-sm text-text-primary">
             فریم پیش‌نمایش (ثانیه)
             <Input
               className="h-9 text-xs"
@@ -111,35 +127,35 @@ export default function TelegramCover({
               onChange={(event) => seek(Number(event.target.value))}
             />
           </label>
-          <div className="cover-actions">
-            <button
-              className="secondary"
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               disabled={busy || active}
               onClick={() => choose(video.current?.currentTime ?? time)}
             >
-              {busy ? (
-                <LoaderCircle size={15} className="spin" />
-              ) : (
-                <Image size={15} />
-              )}{" "}
+              {busy ? <LoaderCircle className="spin" /> : <Image />}
               استفاده از فریم فعلی
-            </button>
-            <button
-              className="text-link"
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               disabled={busy || active}
               onClick={() => choose(null)}
             >
               فریم خودکار
-            </button>
+            </Button>
           </div>
+          <p className="text-xs leading-6 text-text-tertiary">
+            برای هر کلیپ به‌طور خودکار یک کاور ساخته می‌شود. ویدیوی بالا را
+            متوقف یا جابه‌جا کنید و سپس با فریم فعلی آن کاور دلخواه خود را
+            انتخاب کنید. کاوری که پیش از رندر ذخیره شود، بدون زیرنویس سوخته باقی
+            می‌ماند.
+          </p>
         </div>
       </div>
-      <p className="hint">
-        برای هر کلیپ به‌طور خودکار یک کاور ساخته می‌شود. ویدیوی بالا را متوقف یا
-        جابه‌جا کنید و سپس با فریم فعلی آن کاور دلخواه خود را انتخاب کنید. کاوری
-        که در ویرایشگر و پیش از رندر ذخیره شود، بدون زیرنویس سوخته باقی می‌ماند؛
-        انتخاب فریم در اینجا آن را از MP4 نهایی می‌خواند.
-      </p>
     </section>
   );
 }

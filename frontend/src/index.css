@@ -143,6 +143,9 @@
   --color-accent-foreground: var(--ui-accent-foreground);
   --color-destructive: var(--ui-destructive);
   --color-border: var(--ui-border);
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+  --color-border-tertiary: var(--border-tertiary);
   --color-input: var(--ui-input);
   --color-ring: var(--ui-ring);
 

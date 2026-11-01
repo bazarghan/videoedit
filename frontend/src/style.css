@@ -3126,6 +3126,54 @@ small {
   background: var(--hover);
   color: #ffffff;
 }
+.nav-group {
+  display: flex;
+  flex-direction: column;
+}
+.nav-parent .nav-chevron {
+  margin-right: auto;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+}
+.nav-parent.active .nav-chevron {
+  color: var(--brand-text);
+}
+.nav-parent .nav-chevron.open {
+  transform: rotate(180deg);
+}
+.nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px;
+  padding-right: 18px;
+}
+.nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 10px;
+  border-right: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: right;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.nav-subitem:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+.nav-subitem.active {
+  background: var(--brand-soft);
+  border-right-color: var(--brand-30);
+  color: var(--brand-text);
+  font-weight: 600;
+}
 .count {
   background: var(--brand-20);
   color: var(--brand-text);
@@ -3719,6 +3767,16 @@ label.check {
 .send-panel h3,
 .telegram-cover h3 {
   font-size: 14px;
+}
+.telegram-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.telegram-entry-actions .hint {
+  margin: 0;
 }
 
 /* ---------- settings ---------- */
@@ -4350,6 +4408,10 @@ input[autocomplete="username"] {
   .nav-item svg {
     width: 20px;
     height: 20px;
+  }
+  .nav-chevron,
+  .nav-submenu {
+    display: none;
   }
   .sidebar nav {
     margin-top: 28px;

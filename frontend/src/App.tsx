@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Scissors,
   LayoutGrid,
@@ -20,7 +20,8 @@ import {
   ChevronRight,
   HardDrive,
   Sparkles,
-  Pencil,
+  ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   api,
@@ -37,19 +38,9 @@ import {
 import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
-import TelegramCover from "./TelegramCover";
-import { TelegramEditorModal, TelegramRichText } from "./telegram-editor";
-import { Checkbox } from "./components/ui/checkbox";
+import TelegramPostPage from "./TelegramPostPage";
 import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
 import { Textarea } from "./components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./components/ui/select";
 
 const emptyProxy: DownloadProxyDraft = {
   host: "",
@@ -64,6 +55,7 @@ const nav = [
   { id: "projects", label: "پروژه‌ها", icon: LayoutGrid },
   { id: "queue", label: "فعالیت‌ها", icon: ListVideo },
   { id: "clips", label: "کلیپ‌های رندرشده", icon: Film },
+  { id: "post", label: "ارسال پست", icon: Send },
   { id: "settings", label: "تنظیمات", icon: SettingsIcon },
 ];
 
@@ -80,7 +72,6 @@ const statusLabels: Record<string, string> = {
 const statusLabel = (status: string) => statusLabels[status] || status;
 
 export default function App() {
-  const resultVideo = useRef<HTMLVideoElement>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null),
     [page, setPage] = useState("projects"),
     [selected, setSelected] = useState("");
@@ -100,21 +91,12 @@ export default function App() {
   const [useProxy, setUseProxy] = useState(false),
     [proxy, setProxy] = useState<DownloadProxyDraft>(emptyProxy),
     [proxyBusy, setProxyBusy] = useState(false);
-  const [dest, setDest] = useState(""),
-    [caption, setCaption] = useState(""),
-    [captionFormat, setCaptionFormat] = useState("html"),
-    [captionOpen, setCaptionOpen] = useState(false),
-    [captionBusy, setCaptionBusy] = useState(false),
-    [asFile, setAsFile] = useState(false);
+  const [postClip, setPostClip] = useState<Clip | null>(null);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
-  const coverPending =
-    !!openClip &&
-    jobs.some(
-      (job) =>
-        job.project_id === openClip.project_id &&
-        job.kind === "cover" &&
-        ["queued", "running"].includes(job.status),
-    );
+  useEffect(() => {
+    if (page === "settings") setSettingsMenuOpen(true);
+  }, [page]);
   useEffect(() => {
     if (openClip)
       setOpenClip(clips.find((clip) => clip.id === openClip.id) || openClip);
@@ -254,34 +236,13 @@ export default function App() {
     };
     xhr.send(form);
   }
-  async function autoCaption() {
-    if (!openClip) return;
-    setCaptionBusy(true);
-    try {
-      const result = await api<{ caption: string }>(
-        `/clips/${openClip.id}/caption`,
-        json("POST"),
-      );
-      setCaption(result.caption);
-      setCaptionOpen(true);
-      toast("کپشن خودکار آماده است. پیش از ارسال آن را بررسی کنید.");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setCaptionBusy(false);
-    }
-  }
   function showClip(clip: Clip) {
     setOpenClip(clip);
-    setCaption("");
-    setCaptionOpen(false);
-    setCaptionBusy(false);
-    setAsFile(false);
-    setDest(
-      settings?.telegram.default_channel ||
-        settings?.telegram.channels[0]?.id ||
-        "",
-    );
+  }
+  function openSend(clip: Clip) {
+    setPostClip(clip);
+    setOpenClip(null);
+    setPage("post");
   }
   if (authenticated === null)
     return (
@@ -308,19 +269,72 @@ export default function App() {
         </a>
         <div className="sidebar-label">فضای کاری شما</div>
         <nav>
-          {nav.map((n) => (
-            <button
-              className={page === n.id ? "nav-item active" : "nav-item"}
-              key={n.id}
-              onClick={() => setPage(n.id)}
-            >
-              <n.icon size={19} />
-              {n.label}
-              {n.id === "queue" && active.length > 0 && (
-                <span className="count">{active.length}</span>
-              )}
-            </button>
-          ))}
+          {nav.map((n) => {
+            if (n.id === "settings") {
+              return (
+                <div className="nav-group" key={n.id}>
+                  <button
+                    className={
+                      "nav-item nav-parent" +
+                      (page === n.id ? " active" : "")
+                    }
+                    aria-expanded={settingsMenuOpen}
+                    aria-controls="workspace-settings-submenu"
+                    onClick={() => {
+                      if (page === n.id) {
+                        setSettingsMenuOpen((open) => !open);
+                      } else {
+                        setSettingsMenuOpen(true);
+                        setPage(n.id);
+                      }
+                    }}
+                  >
+                    <n.icon size={19} />
+                    {n.label}
+                    <ChevronDown
+                      className={
+                        "nav-chevron" + (settingsMenuOpen ? " open" : "")
+                      }
+                      size={15}
+                    />
+                  </button>
+                  {settingsMenuOpen && (
+                    <div
+                      className="nav-submenu"
+                      id="workspace-settings-submenu"
+                    >
+                      <button
+                        className={
+                          "nav-subitem " +
+                          (page === "settings" ? "active" : "")
+                        }
+                        aria-current={
+                          page === "settings" ? "page" : undefined
+                        }
+                        onClick={() => setPage("settings")}
+                      >
+                        <SlidersHorizontal size={14} />
+                        تنظیمات فضای کاری
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <button
+                className={page === n.id ? "nav-item active" : "nav-item"}
+                key={n.id}
+                onClick={() => setPage(n.id)}
+              >
+                <n.icon size={19} />
+                {n.label}
+                {n.id === "queue" && active.length > 0 && (
+                  <span className="count">{active.length}</span>
+                )}
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-bottom">
           <div className="storage-mini">
@@ -363,6 +377,12 @@ export default function App() {
             {page === "editor"
               ? "ویرایشگر ویدیو"
               : nav.find((n) => n.id === page)?.label}
+            {page === "settings" && (
+              <>
+                {" "}
+                <ChevronRight size={14} /> تنظیمات فضای کاری
+              </>
+            )}
           </span>
           <span className="topbar-right">
             <span className="live-dot" />
@@ -713,7 +733,7 @@ export default function App() {
                         <button
                           className="icon-button"
                           aria-label="ارسال به Telegram"
-                          onClick={() => showClip(c)}
+                          onClick={() => openSend(c)}
                         >
                           <Send size={16} />
                         </button>
@@ -737,6 +757,25 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+        {page === "post" && (
+          <TelegramPostPage
+            clips={clips}
+            clip={
+              postClip
+                ? (clips.find((item) => item.id === postClip.id) ?? postClip)
+                : null
+            }
+            onSelectClip={setPostClip}
+            settings={settings}
+            jobs={jobs}
+            onSettings={() => setPage("settings")}
+            onQueue={() => setPage("queue")}
+            onBackToClips={() => setPage("clips")}
+            refresh={refresh}
+            toast={toast}
+            onError={setError}
+          />
         )}
         {page === "settings" && (
           <SettingsPage
@@ -908,7 +947,6 @@ export default function App() {
               </button>
             </div>
             <video
-              ref={resultVideo}
               className="result-video"
               src={`/api/media/clip/${openClip.id}`}
               poster={
@@ -931,14 +969,6 @@ export default function App() {
                 <Download size={16} /> دانلود MP4
               </a>
             </div>
-            <TelegramCover
-              clip={openClip}
-              video={resultVideo}
-              jobs={jobs}
-              refresh={refresh}
-              toast={toast}
-              onError={setError}
-            />
             <div className="send-panel">
               <h3>
                 <Send size={17} /> ارسال به Telegram
@@ -972,135 +1002,25 @@ export default function App() {
                   اضافه کنید و مطمئن شوید ربات در آنجا مدیر است.
                 </p>
               ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    action(
-                      () =>
-                        api(
-                          `/clips/${openClip.id}/send`,
-                          json("POST", {
-                            destination:
-                              dest || settings.telegram.channels[0].id,
-                            caption,
-                            as_file: asFile,
-                          }),
-                        ),
-                      "ارسال به Telegram در صف قرار گرفت. آن را در فعالیت‌ها پیگیری کنید.",
-                    );
-                  }}
-                >
-                  <label>
-                    کانال
-                    <Select
-                      value={dest || settings.telegram.channels[0].id}
-                      onValueChange={(value) => setDest(value)}
-                    >
-                      <SelectTrigger
-                        className="h-9 text-xs"
-                        aria-label="کانال"
-                      >
-                        <SelectValue placeholder="یک کانال انتخاب کنید" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {settings.telegram.channels.map((channel) => (
-                          <SelectItem key={channel.id} value={channel.id}>
-                            {channel.name}
-                            {channel.username ? ` (@${channel.username})` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </label>
-                  <div className="caption-field">
-                    <span className="caption-field-label">کپشن</span>
-                    <div className="caption-box">
-                      <div className="caption-preview">
-                        {caption ? (
-                          <TelegramRichText text={caption} />
-                        ) : (
-                          <span className="muted">
-                            هنوز کپشنی نیست. متن قالب‌بندی‌شده، لینک یا ایموجی
-                            اضافه کنید.
-                          </span>
-                        )}
-                      </div>
-                      <div className="caption-actions">
-                        <span className="caption-count">
-                          {caption.length} / 1024
-                        </span>
-                        <div className="caption-buttons">
-                          <button
-                            type="button"
-                            className="secondary"
-                            disabled={
-                              captionBusy || !settings?.ai.api_key_saved
-                            }
-                            onClick={autoCaption}
-                            title={
-                              !settings?.ai.api_key_saved
-                                ? "ابتدا توکن API سرویس 9Router را در تنظیمات وارد کنید"
-                                : "با استفاده از پرامپت موجود در تنظیمات، از زیرنویس‌های این کلیپ کپشن بنویس"
-                            }
-                          >
-                            {captionBusy ? (
-                              <LoaderCircle className="spin" size={15} />
-                            ) : (
-                              <Sparkles size={15} />
-                            )}{" "}
-                            {captionBusy ? "در حال نوشتن…" : "کپشن خودکار"}
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => setCaptionOpen(true)}
-                          >
-                            <Pencil size={15} />{" "}
-                            {caption ? "ویرایش کپشن" : "نوشتن کپشن"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="hint caption-hint">
-                      کپشن خودکار از زیرنویس‌های انگلیسی و فارسی کلیپ و همچنین
-                      پرامپت سیستمی در تنظیمات ← زیرنویس و کپشن خودکار استفاده
-                      می‌کند.
-                    </p>
-                  </div>
-                  <Label className="check">
-                    <Checkbox
-                      checked={asFile}
-                      onCheckedChange={(value) => setAsFile(value === true)}
-                    />
-                    <span>ارسال به‌صورت فایل به‌جای ویدیوی قابل پخش</span>
-                  </Label>
-                  <p className="hint">
-                    ویدیوها از طریق MTProto و با ربات شما آپلود می‌شوند، تا ۲
-                    GB.
+                <>
+                  <p>
+                    کاور، کپشن و کانال مقصد را در صفحه ارسال پست تنظیم کنید و
+                    سپس ارسال را نهایی کنید.
                   </p>
-                  <button className="primary" disabled={coverPending}>
-                    <Send size={16} /> همین حالا ارسال کنید
-                  </button>
-                </form>
+                  <div className="telegram-entry-actions">
+                    <button
+                      className="primary"
+                      onClick={() => openSend(openClip)}
+                    >
+                      <Send size={16} /> رفتن به صفحه ارسال پست
+                    </button>
+                    <span className="hint">
+                      {settings.telegram.channels.length} کانال متصل است.
+                    </span>
+                  </div>
+                </>
               )}
             </div>
-            <TelegramEditorModal
-              open={captionOpen}
-              onClose={() => setCaptionOpen(false)}
-              value={caption}
-              onChange={setCaption}
-              format={captionFormat}
-              onFormatChange={setCaptionFormat}
-              maxLength={1024}
-              richEnabled={false}
-              defaultShowPreview
-              title="کپشن پست"
-              label="کپشن برای پست کانال Telegram شما"
-              placeholder="کپشن بنویسید…"
-              previewTitle={
-                settings?.telegram_status.name || "کانال Telegram"
-              }
-            />
           </section>
         </div>
       )}
