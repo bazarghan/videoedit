@@ -161,6 +161,131 @@ def test_run_rejects_video_over_duration_limit_without_spending_tokens(
     s.set_setting("ai", {})
 
 
+def test_auto_subtitle_endpoint_queues_only_the_selected_clip():
+    from app.main import auto_subtitle
+    from app.models import AutoSubtitleRequest
+
+    project_id = s.uid()
+    s.execute(
+        "INSERT INTO projects(id,name,source,metadata,edit,status,created) VALUES (?,?,?,?,?,?,?)",
+        (
+            project_id,
+            "Two hour movie",
+            "/tmp/movie.mp4",
+            json.dumps({"duration": 7200}),
+            Edit().model_dump_json(),
+            "ready",
+            0,
+        ),
+    )
+    s.set_setting("elevenlabs", {"api_key": "eleven", "max_duration_minutes": 6})
+    try:
+        result = asyncio.run(
+            auto_subtitle(
+                project_id,
+                AutoSubtitleRequest(
+                    language="en", translate=False, start=600.0, end=720.0
+                ),
+            )
+        )
+        job = s.one("SELECT payload FROM jobs WHERE id=?", (result["job_id"],))
+        payload = s.decrypt(job["payload"])
+        assert payload["slice"] is True
+        assert payload["offset"] == pytest.approx(600.0)
+        assert payload["duration"] == pytest.approx(120.0)
+        s.update_job(result["job_id"], status="completed")
+        # A clip longer than the cap is still rejected even when the full
+        # movie is far longer than the selected range.
+        with pytest.raises(ValueError, match="This clip is 10.0 minutes"):
+            asyncio.run(
+                auto_subtitle(
+                    project_id,
+                    AutoSubtitleRequest(
+                        language="en", translate=False, start=60.0, end=660.0
+                    ),
+                )
+            )
+    finally:
+        s.execute("DELETE FROM jobs WHERE project_id=?", (project_id,))
+        s.execute("DELETE FROM projects WHERE id=?", (project_id,))
+        s.set_setting("elevenlabs", {})
+
+
+def test_run_slices_the_source_to_the_selected_clip(monkeypatch, tmp_path):
+    project_id = s.uid()
+    source = tmp_path / "movie.mp4"
+    source.write_bytes(b"video")
+    s.execute(
+        "INSERT INTO projects(id,name,source,metadata,edit,status,created) VALUES (?,?,?,?,?,?,?)",
+        (
+            project_id,
+            "Movie clip",
+            str(source),
+            json.dumps({"duration": 7200}),
+            Edit().model_dump_json(),
+            "ready",
+            0,
+        ),
+    )
+    s.set_setting("elevenlabs", {"api_key": "eleven", "model": "scribe_v1"})
+    s.set_setting("ai", {"api_key": "router", "model": "test-model"})
+    job_id = s.uid()
+    s.execute(
+        "INSERT INTO jobs(id,kind,project_id,payload,status,created) VALUES (?,?,?,?,?,?)",
+        (job_id, "autosubtitle", project_id, "{}", "running", 0),
+    )
+    commands = []
+
+    async def extract(args, ident=None, duration=0):
+        commands.append(args)
+        Path(args[-1]).write_bytes(b"audio")
+
+    monkeypatch.setattr(autosubtitle.media, "run", extract)
+    monkeypatch.setattr(
+        autosubtitle,
+        "transcribe_audio",
+        AsyncMock(
+            return_value={
+                "words": [
+                    {"type": "word", "text": "Cut", "start": 0.0, "end": 0.6},
+                ]
+            }
+        ),
+    )
+    monkeypatch.setattr(autosubtitle, "translate_cues", AsyncMock(return_value=[]))
+    try:
+        result = asyncio.run(
+            autosubtitle.run(
+                s.one("SELECT * FROM projects WHERE id=?", (project_id,)),
+                {
+                    "language": "en",
+                    "translate": False,
+                    "offset": 600.0,
+                    "duration": 120.0,
+                    "slice": True,
+                },
+                job_id,
+            )
+        )
+        args = commands[0]
+        assert args[args.index("-ss") + 1] == "600.000"
+        assert args[args.index("-t") + 1] == "120.000"
+        assert args[args.index("-i") + 1] == str(source)
+        track = s.one(
+            "SELECT * FROM subtitles WHERE project_id=? AND role='main'",
+            (project_id,),
+        )
+        cues = json.loads(track["cues"])
+        assert cues[0]["start"] == pytest.approx(600.0)
+        assert result["cues"] == 1
+    finally:
+        s.execute("DELETE FROM subtitles WHERE project_id=?", (project_id,))
+        s.execute("DELETE FROM projects WHERE id=?", (project_id,))
+        s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+        s.set_setting("elevenlabs", {})
+        s.set_setting("ai", {})
+
+
 def test_dual_subtitle_layout_places_english_above_persian(tmp_path):
     from app import media
 

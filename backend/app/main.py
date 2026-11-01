@@ -851,7 +851,8 @@ async def upload_subtitles(
 @app.post("/api/projects/{ident}/autosubtitle")
 async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
     row = project(ident)
-    if json.loads(row["metadata"]).get("local"):
+    meta = json.loads(row["metadata"])
+    if meta.get("local"):
         raise ValueError(
             "Automatic subtitles need the source audio. This project renders "
             "in your browser and the video was not uploaded."
@@ -867,12 +868,24 @@ async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
     if body.translate and not s.setting("ai", {}).get("api_key"):
         raise ValueError("Add your 9Router API token in Settings first.")
     limit = max_duration_minutes(elevenlabs)
-    duration = float(json.loads(row["metadata"]).get("duration") or 0)
+    source_duration = float(meta.get("duration") or 0)
+    selected = body.start is not None or body.end is not None
+    start = float(body.start or 0)
+    end = float(body.end if body.end is not None else source_duration)
+    if selected:
+        if end <= start:
+            raise ValueError("Choose a clip range before creating subtitles.")
+        if source_duration and end > source_duration + 1:
+            raise ValueError("The selected clip is outside this video.")
+        duration = end - start
+    else:
+        duration = source_duration
     if duration > limit * 60 + 0.5:
+        what = "clip" if selected else "video"
         raise ValueError(
-            f"This video is {duration / 60:.1f} minutes long. Automatic "
+            f"This {what} is {duration / 60:.1f} minutes long. Automatic "
             f"subtitles are limited to {limit} minutes; raise the limit in "
-            "Settings → Auto subtitles or import a shorter video."
+            "Settings → Auto subtitles or select a shorter clip."
         )
     latest = s.one(
         "SELECT status FROM jobs WHERE project_id=? AND kind='autosubtitle' "
@@ -891,7 +904,13 @@ async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
         "job_id": s.job(
             "autosubtitle",
             ident,
-            {"language": body.language, "translate": body.translate},
+            {
+                "language": body.language,
+                "translate": body.translate,
+                "offset": start,
+                "duration": duration,
+                "slice": selected,
+            },
         )
     }
 

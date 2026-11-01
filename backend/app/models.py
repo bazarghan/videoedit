@@ -65,6 +65,9 @@ class SubtitleStyle(SubtitleDefaults):
 class AutoSubtitleRequest(Strict):
     language: str = Field(default="en", min_length=2, max_length=12)
     translate: bool = True
+    # Source-time range to transcribe. When omitted the whole source is used.
+    start: float | None = Field(default=None, ge=0)
+    end: float | None = Field(default=None, ge=0)
 
 
 DEFAULT_CAPTION_PROMPT = """تو یک نویسندهٔ حرفه‌ای کپشن تلگرام هستی. بر اساس زیرنویس‌های انگلیسی یا فارسی کلیپ و نام پروژه، یک کپشن فارسی جذاب و دقیق بنویس.

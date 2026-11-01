@@ -353,8 +353,9 @@ export default function Editor({
     !!project?.subtitles?.some((track) => track.origin === "auto") &&
     (!lastAutoSubtitleJob ||
       !["failed", "cancelled"].includes(lastAutoSubtitleJob.status));
-  const autoSubtitleSpan =
-    local && edit ? Math.max(0, edit.end - edit.start) : duration;
+  const autoSubtitleSpan = edit
+    ? Math.max(0, edit.end - edit.start)
+    : duration;
   const autoSubtitleTooLong =
     autoSubtitleSpan > autoSubtitleLimitMinutes * 60 + 0.5;
   const activeRender = jobs.find(
@@ -381,7 +382,7 @@ export default function Editor({
       ? "زیرنویس خودکار برای این ویدیو ساخته شده است. به‌جای مصرف توکن بیشتر، آن‌ها را ویرایش کنید."
       : autoSubtitleTooLong
         ? `زیرنویس خودکار تا ${autoSubtitleLimitMinutes} دقیقه محدود است. سقف را در تنظیمات → زیرنویس خودکار افزایش دهید.`
-        : "پیاده‌سازی گفتار با ElevenLabs، ترجمه با 9Router و افزودن زیرنویس انگلیسی + فارسی";
+        : "فقط صدای بازه انتخاب‌شده ترنسکرایب می‌شود؛ سپس 9Router آن را به فارسی ترجمه می‌کند.";
   const complete = !!project?.metadata.duration;
   const playbackReady = canRender && complete;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
@@ -893,10 +894,15 @@ export default function Editor({
     try {
       await api(
         `/projects/${id}/autosubtitle`,
-        json("POST", { language: "en", translate: true }),
+        json("POST", {
+          language: "en",
+          translate: true,
+          start: edit.start,
+          end: edit.end,
+        }),
       );
       toast(
-        "زیرنویس خودکار در صف قرار گرفت. ElevenLabs گفتار را پیاده‌سازی می‌کند، سپس 9Router آن را به فارسی ترجمه می‌کند.",
+        "زیرنویس خودکار در صف قرار گرفت. فقط صدای بازه انتخاب‌شده ترنسکرایب می‌شود؛ سپس 9Router آن را به فارسی ترجمه می‌کند.",
       );
     } catch (e) {
       setAutoStarting(false);
@@ -2385,8 +2391,7 @@ export default function Editor({
                         </p>
                         {autoSubtitleTooLong && (
                           <p className="inline-error">
-                            {local ? "این بازه" : "این ویدیو"}{" "}
-                            {clock(autoSubtitleSpan)} است. زیرنویس خودکار تا{" "}
+                            این بازه {clock(autoSubtitleSpan)} است. زیرنویس خودکار تا{" "}
                             {autoSubtitleLimitMinutes} دقیقه محدود است؛ سقف را
                             در تنظیمات → زیرنویس خودکار افزایش دهید.
                           </p>

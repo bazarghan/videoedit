@@ -367,6 +367,9 @@ async def run(project, payload, ident):
     meta = json.loads(project["metadata"])
     duration = float(payload.get("duration") or meta.get("duration") or 0)
     offset = float(payload.get("offset") or 0)
+    # Server projects can transcribe just the selected cut instead of the
+    # whole source; browser projects upload the cut's audio directly.
+    clip_range = bool(payload.get("slice")) and duration > 0
     limit = max_duration_minutes(elevenlabs)
     if duration > limit * 60 + 0.5:
         raise ValueError(
@@ -381,28 +384,33 @@ async def run(project, payload, ident):
             audio = Path(uploaded_audio)
         else:
             audio = work / "audio.mp3"
-            await media.run(
-                [
-                    "ffmpeg",
-                    "-hide_banner",
-                    "-v",
-                    "error",
-                    "-y",
-                    "-i",
-                    str(source),
-                    "-vn",
-                    "-ac",
-                    "1",
-                    "-ar",
-                    "16000",
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    "64k",
-                    str(audio),
-                ],
-                ident,
-            )
+            extract = [
+                "ffmpeg",
+                "-hide_banner",
+                "-v",
+                "error",
+                "-y",
+                # Seek before the input so a two-hour source is not decoded
+                # from the start; ffmpeg still trims to the exact range.
+                *(
+                    ["-ss", f"{offset:.3f}", "-t", f"{duration:.3f}"]
+                    if clip_range
+                    else []
+                ),
+                "-i",
+                str(source),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "64k",
+                str(audio),
+            ]
+            await media.run(extract, ident)
         s.update_job(ident, progress=12)
         transcript = await transcribe_audio(
             audio, elevenlabs, payload.get("language", "en"), ident
