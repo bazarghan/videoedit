@@ -5,9 +5,14 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+# yt-dlp uses a JavaScript runtime for YouTube's challenge scripts. Debian's
+# Node package is too old, so copy the supported runtime from the Node image.
+FROM node:24-bookworm-slim AS node_runtime
+
 FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data STATIC_DIR=/app/static TMPDIR=/data/work
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core fonts-liberation fonts-noto-core tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core fonts-liberation fonts-noto-core libstdc++6 tini && rm -rf /var/lib/apt/lists/*
+COPY --from=node_runtime /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY backend/requirements.txt backend/constraints.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt

@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import aiohttp
 from yarl import URL
 
-from . import autosubtitle, media
+from . import autosubtitle, media, youtube
 from . import store as s
 from .network import connector, validate_url
 from .telegram import error_message, telegram
@@ -101,6 +101,8 @@ async def dispatch(job, payload):
         raise ValueError("The project no longer exists.")
     elif job["kind"] == "download":
         await download(project["id"], payload, ident)
+    elif job["kind"] == "youtube":
+        await youtube.download(project["id"], payload, ident)
     elif job["kind"] == "ingest":
         await media.ingest(project["id"], payload["path"], ident)
     elif job["kind"] == "cover":
@@ -154,7 +156,7 @@ async def worker(kinds):
                 finished=time.time(),
                 error="Cancelled by you.",
             )
-            if job["kind"] in ("download", "ingest"):
+            if job["kind"] in ("download", "youtube", "ingest"):
                 s.execute(
                     "UPDATE projects SET status='cancelled' WHERE id=?",
                     (job["project_id"],),
@@ -186,7 +188,7 @@ async def worker(kinds):
             s.update_job(
                 ident, status="failed", error=message[:2000], finished=time.time()
             )
-            if job["kind"] in ("download", "ingest"):
+            if job["kind"] in ("download", "youtube", "ingest"):
                 s.execute(
                     "UPDATE projects SET status=? WHERE id=?",
                     ("failed", job["project_id"]),

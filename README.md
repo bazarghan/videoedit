@@ -7,6 +7,7 @@ Built with React, TypeScript, FastAPI, FFmpeg/libass, SQLite, and Telethon. Vide
 ## Features
 
 - Direct HTTP/HTTPS downloads with complete signed URLs, optional SOCKS5 proxies, upload progress, cancellation, and actionable errors.
+- Single-video YouTube imports through yt-dlp, with the same proxy support, progress, cancellation, and automatic project naming.
 - Telegram-ready MP4 exports with automatic video covers, clean pre-render frame candidates, and manual frame selection from the finished clip.
 - Persistent projects and background jobs; one render at a time with three encoding threads.
 - Browser playback, seeking, playback speed, fullscreen, audio-track selection, and clip looping.
@@ -54,7 +55,7 @@ Sign in using the administrator credentials configured in `.env`. For local HTTP
 
 ## Create a clip
 
-1. Click **New project** and paste a direct media URL or upload a video. Website page URLs, platform scraping, DRM, and adaptive playlists are outside the importer.
+1. Click **New project** and paste a direct media URL, paste a YouTube link, or upload a video. YouTube imports accept one public video, Shorts, or youtu.be link at a time; playlists, channels, live streams, DRM, and other platform extractors are rejected. Other website page URLs, platform scraping, and adaptive playlists are outside the direct-link importer.
 2. Wait for inspection. The original video plays if your browser supports its codecs and container. Click **Auto subtitle** in the editor header for English + Persian, or open **Advanced → Captions** to choose/upload your own tracks. Embedded source subtitles are listed but stay off by default; enable **Use the video's original soft subtitles** to use them instead. If the original cannot play, you can still trim and render it.
 3. Drag the timeline handles or enter exact start/end seconds in **Advanced → Clip**. Use **Set start here**, **Set end here**, and loop to refine the selection.
 4. Open **Advanced → Frame** to choose a frame. Fill crops the edges; Fit retains the whole source with black padding. Drag to reframe or use the position sliders.
@@ -84,11 +85,17 @@ Source soft subtitles are **off by default**. New imports keep embedded subtitle
 
 ## SOCKS5 downloads
 
-In **New project → Video link**, enable **Use SOCKS5 proxy** and enter its hostname/IP address and port (usually 1080). Username and password are optional. **Save proxy** stores the connection for future downloads; starting a proxied download also saves it. Keep the checkbox off to connect directly.
+In **New project → Video link** or **YouTube**, enable **Use SOCKS5 proxy** and enter its hostname/IP address and port (usually 1080). Username and password are optional. **Save proxy** stores the connection for future downloads; starting a proxied download also saves it. Keep the checkbox off to connect directly.
 
 Passwords are encrypted and never returned to the browser. Leaving the password blank retains it only for the same host, port and username. Use **Clear saved password** to remove authentication or **Remove saved proxy** to delete the profile. Each queued job retains an encrypted snapshot, so changes apply to new downloads; existing jobs and retries keep their original connection.
 
-Video hostnames are resolved and validated locally, then public IP addresses are sent through SOCKS5. Redirects use the same proxy and retain signed query parameters. HTTPS certificate verification and the original hostname are preserved. The proxy must be reachable from the application; in Docker, `localhost` refers to the application container. Remote proxy DNS (`socks5h`), proxy chains and HTTP proxies are not supported. These settings apply to URL imports, not Telegram uploads or browser playback.
+Video hostnames are resolved and validated locally, then public IP addresses are sent through SOCKS5. Redirects use the same proxy and retain signed query parameters. HTTPS certificate verification and the original hostname are preserved. The proxy must be reachable from the application; in Docker, `localhost` refers to the application container. Remote proxy DNS (`socks5h`), proxy chains and HTTP proxies are not supported. These settings apply to URL and YouTube imports, not Telegram uploads or browser playback.
+
+## YouTube imports
+
+Use **New project → YouTube** to paste a single public YouTube video, Shorts, or youtu.be link. The server downloads it with [yt-dlp](https://github.com/yt-dlp/yt-dlp) into the same source pipeline as a direct URL, so trimming, subtitles, rendering, and storage limits behave identically. Playlists, channels, live or upcoming streams, and links from other sites are rejected. The imported project is named after the video title unless you enter a name.
+
+YouTube may require a signed-in session or bot verification for some videos, especially from datacenter IPs. To use an account, export a Netscape-format `cookies.txt` and point `YTDLP_COOKIES_FILE` at it in `.env` before starting the application. Keep that file private and mount it read-only; it grants access to the account's YouTube session. The downloader does not use browser cookies automatically.
 
 ## Telegram
 

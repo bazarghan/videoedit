@@ -1070,7 +1070,7 @@ export default function Editor({
           {active.map((j) => (
             <div className="processing-job" key={j.id}>
               <span>
-                {j.kind === "download"
+                {j.kind === "download" || j.kind === "youtube"
                   ? "در حال دانلود"
                   : j.kind === "autosubtitle"
                     ? "ساخت زیرنویس انگلیسی + فارسی"

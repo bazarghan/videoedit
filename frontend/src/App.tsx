@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   Upload,
   Link,
+  Youtube,
   Play,
   Download,
   Send,
@@ -162,7 +163,7 @@ export default function App() {
         "/import/url",
         json("POST", {
           url,
-          name: name || "Imported video",
+          name,
           use_proxy: useProxy,
         }),
       );
@@ -414,8 +415,8 @@ export default function App() {
               <div>
                 <h3>از یک لینک تا کلیپ آماده</h3>
                 <p>
-                  ویدیو را وارد کنید، کادر را تنظیم کنید، زیرنویس اضافه کنید و
-                  به اشتراک بگذارید.
+                  لینک یوتیوب یا نشانی مستقیم ویدیو را وارد کنید، کادر را تنظیم
+                  کنید، زیرنویس اضافه کنید و به اشتراک بگذارید.
                 </p>
               </div>
               <button
@@ -444,8 +445,8 @@ export default function App() {
                 </div>
                 <h3>بوم سفیدی برای داستان بعدی شما</h3>
                 <p>
-                  یک لینک مستقیم ویدیو جای‌گذاری کنید یا فایل MP4، MKV یا WebM
-                  بارگذاری کنید.
+                  یک لینک یوتیوب یا نشانی مستقیم ویدیو جای‌گذاری کنید یا فایل
+                  MP4، MKV یا WebM بارگذاری کنید.
                 </p>
                 <button className="primary" onClick={() => setImportOpen(true)}>
                   اولین ویدیوی خود را وارد کنید <ArrowUpRight size={16} />
@@ -556,6 +557,8 @@ export default function App() {
                         <LoaderCircle className="spin" size={22} />
                       ) : j.status === "completed" ? (
                         <Check size={22} />
+                      ) : j.kind === "youtube" ? (
+                        <Youtube size={22} />
                       ) : j.kind === "download" ? (
                         <Download size={22} />
                       ) : j.kind === "autosubtitle" ? (
@@ -570,6 +573,7 @@ export default function App() {
                           {
                             {
                               download: "دانلود",
+                              youtube: "دانلود از یوتیوب",
                               ingest: "بررسی ویدیو",
                               render: "رندر کلیپ",
                               cover: "کاور Telegram",
@@ -833,29 +837,47 @@ export default function App() {
                 <Link size={15} /> لینک ویدیو
               </button>
               <button
+                className={tab === "youtube" ? "active" : ""}
+                onClick={() => setTab("youtube")}
+              >
+                <Youtube size={15} /> یوتیوب
+              </button>
+              <button
                 className={tab === "upload" ? "active" : ""}
                 onClick={() => setTab("upload")}
               >
                 <Upload size={15} /> بارگذاری فایل
               </button>
             </div>
-            {tab === "url" ? (
+            {tab !== "upload" ? (
               <form onSubmit={importURL}>
                 <label>
-                  نشانی مستقیم ویدیو
+                  {tab === "youtube"
+                    ? "لینک ویدیوی یوتیوب"
+                    : "نشانی مستقیم ویدیو"}
                   <Textarea
                     required
-                    placeholder="https://example.com/video.mp4?token=…"
+                    placeholder={
+                      tab === "youtube"
+                        ? "https://www.youtube.com/watch?v=…"
+                        : "https://example.com/video.mp4?token=…"
+                    }
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                   />
                 </label>
                 <p className="hint">
-                  از یک لینک مستقیم به فایل MP4، MKV یا WebM استفاده کنید.
-                  لینک‌های امضاشده همه پارامترهای کوئری خود را حفظ می‌کنند.
+                  {tab === "youtube"
+                    ? "لینک ویدیو، Shorts یا youtu.be را جای‌گذاری کنید. پلی‌لیست‌ها و پخش‌های زنده پشتیبانی نمی‌شوند."
+                    : "از یک لینک مستقیم به فایل MP4، MKV یا WebM استفاده کنید. لینک‌های امضاشده همه پارامترهای کوئری خود را حفظ می‌کنند."}
                 </p>
                 <label>
-                  نام پروژه <span className="muted">(اختیاری)</span>
+                  نام پروژه{" "}
+                  <span className="muted">
+                    {tab === "youtube"
+                      ? "(اختیاری · پیش‌فرض: عنوان ویدیو)"
+                      : "(اختیاری)"}
+                  </span>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -875,10 +897,16 @@ export default function App() {
                 <button className="primary wide" disabled={busy || proxyBusy}>
                   {busy ? (
                     <LoaderCircle className="spin" size={18} />
+                  ) : tab === "youtube" ? (
+                    <Youtube size={18} />
                   ) : (
                     <Download size={18} />
                   )}{" "}
-                  {busy ? "در حال افزودن…" : "دانلود و ساخت پروژه"}
+                  {busy
+                    ? "در حال افزودن…"
+                    : tab === "youtube"
+                      ? "دانلود از یوتیوب و ساخت پروژه"
+                      : "دانلود و ساخت پروژه"}
                 </button>
               </form>
             ) : (

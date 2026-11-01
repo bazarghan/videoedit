@@ -19,6 +19,7 @@ from pwdlib import PasswordHash
 from . import caption as captions
 from . import media
 from . import store as s
+from . import youtube
 from .autosubtitle import max_duration_minutes
 from .font_catalog import FONT_SLUGS, font_path
 from .models import (
@@ -97,7 +98,7 @@ async def lifespan(app):
                 },
             )
     tasks = [
-        asyncio.create_task(worker(("download", "ingest"))),
+        asyncio.create_task(worker(("download", "youtube", "ingest"))),
         asyncio.create_task(worker(("render", "cover"))),
         asyncio.create_task(worker(("autosubtitle",))),
         asyncio.create_task(worker(("telegram",))),
@@ -331,8 +332,17 @@ async def get_project(ident: str):
 
 @app.post("/api/import/url")
 async def import_url(body: ImportURL):
-    validate_url(body.url)
-    payload = {"url": body.url}
+    if youtube.is_youtube_url(body.url):
+        url = youtube.validate_youtube_url(body.url)
+        kind = "youtube"
+    else:
+        url = body.url
+        validate_url(url)
+        kind = "download"
+    name = body.name.strip()
+    payload = {"url": url}
+    if name and "name" in body.model_fields_set:
+        payload["name"] = name
     if body.use_proxy:
         config = s.setting("download_proxy", {})
         if not config.get("host"):
@@ -341,8 +351,8 @@ async def import_url(body: ImportURL):
             )
         payload["proxy"] = config
     s.space_for()
-    ident = new_project(body.name)
-    job_id = s.job("download", ident, payload)
+    ident = new_project(name or "Imported video")
+    job_id = s.job(kind, ident, payload)
     return {"project_id": ident, "job_id": job_id}
 
 
@@ -709,7 +719,7 @@ async def cancel_job(ident: str):
         s.update_job(
             ident, status="cancelled", finished=time.time(), error="Cancelled by you."
         )
-        if row["kind"] in ("download", "ingest"):
+        if row["kind"] in ("download", "youtube", "ingest"):
             s.execute(
                 "UPDATE projects SET status='cancelled' WHERE id=?",
                 (row["project_id"],),
@@ -737,7 +747,7 @@ async def retry_job(ident: str):
                 "This exact clip is already rendered or rendering. Open the "
                 "existing export instead of retrying this job."
             )
-    if row["kind"] in ("download", "ingest"):
+    if row["kind"] in ("download", "youtube", "ingest"):
         p = project(row["project_id"])
         # Remove partial subtitle extraction before retrying ingestion.
         s.execute("DELETE FROM subtitles WHERE project_id=?", (p["id"],))
