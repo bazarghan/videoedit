@@ -132,3 +132,96 @@ def test_downloader_moves_the_finished_file(monkeypatch):
     finally:
         destination.unlink(missing_ok=True)
         s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
+class _BotCheck(Exception):
+    pass
+
+
+def _fake_ytdlp(factory):
+    return types.SimpleNamespace(
+        YoutubeDL=factory,
+        utils=types.SimpleNamespace(YoutubeDLError=_BotCheck),
+    )
+
+
+def test_downloader_retries_a_bot_check_with_another_setup(monkeypatch):
+    calls = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+            calls.append(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def extract_info(self, url, download):
+            if len(calls) == 1:
+                raise _BotCheck(
+                    "ERROR: [youtube] x: Sign in to confirm you’re not a bot."
+                )
+            produced = Path(self.options["outtmpl"].replace("%(ext)s", "mp4"))
+            produced.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            return {"title": "Retried video"}
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(FakeYoutubeDL))
+    project_id = s.uid()
+    destination = s.DATA / "sources" / (project_id + ".media")
+    job_id = s.job("youtube", project_id, {"url": "https://youtu.be/dQw4w9WgXcQ"})
+    s.update_job(job_id, status="running")
+    try:
+        title = youtube._download_sync(
+            project_id,
+            "https://youtu.be/dQw4w9WgXcQ",
+            None,
+            job_id,
+            threading.Event(),
+        )
+        assert title == "Retried video"
+        assert len(calls) == 2
+        # The retry swaps the player clients (the cookie-free ones the Telegram
+        # bot ends up using) and only then falls back to the plain bot setup.
+        assert calls[0]["extractor_args"]["youtube"]["player_client"]
+        assert "impersonate" not in calls[1]
+        assert destination.exists()
+    finally:
+        destination.unlink(missing_ok=True)
+        s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
+def test_downloader_does_not_retry_a_private_video(monkeypatch):
+    calls = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            calls.append(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def extract_info(self, url, download):
+            raise _BotCheck("ERROR: [youtube] x: Private video. Sign in.")
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(FakeYoutubeDL))
+    project_id = s.uid()
+    job_id = s.job("youtube", project_id, {"url": "https://youtu.be/dQw4w9WgXcQ"})
+    s.update_job(job_id, status="running")
+    try:
+        with pytest.raises(ValueError, match="private"):
+            youtube._download_sync(
+                project_id,
+                "https://youtu.be/dQw4w9WgXcQ",
+                None,
+                job_id,
+                threading.Event(),
+            )
+        assert len(calls) == 1
+    finally:
+        s.execute("DELETE FROM jobs WHERE id=?", (job_id,))

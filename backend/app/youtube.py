@@ -73,11 +73,20 @@ def _friendly_error(message):
     if (
         "sign in" in text
         or "sign-in" in text
-        or "age-restricted" in text
-        or "age restricted" in text
-        or "confirm your age" in text
         or "not a bot" in text
         or "confirm you're not a bot" in text
+        or "confirm you’re not a bot" in text
+    ):
+        return (
+            "YouTube is blocking this download from the server's network. Try the "
+            "SOCKS5 proxy option, or set YTDLP_COOKIES_FILE to a Netscape "
+            "cookies.txt for a signed-in session."
+        )
+    if (
+        "age-restricted" in text
+        or "age restricted" in text
+        or "confirm your age" in text
+        or "login required" in text
     ):
         return (
             "YouTube requires a signed-in session for this video. Choose a public "
@@ -129,6 +138,75 @@ def _js_runtime():
     return "node" if match and int(match.group(1)) >= 22 else None
 
 
+def _impersonate_target():
+    """Return a browser TLS fingerprint target when curl-cffi is available.
+
+    The Telegram bot this importer mirrors ships curl-cffi, which lets yt-dlp
+    present a real Chrome TLS/HTTP2 fingerprint instead of Python's. YouTube
+    decides whether to show the bot check partly from that fingerprint, so the
+    first attempt uses it and later attempts fall back to plain requests.
+    """
+    try:
+        import curl_cffi  # noqa: F401
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+    except Exception:
+        return None
+    return ImpersonateTarget("chrome")
+
+
+# Failures that another browser profile or player client can get around. Private,
+# removed and live videos are final, so they are not retried.
+_RETRY_MARKERS = (
+    "not a bot",
+    "confirm you're not a bot",
+    "confirm you’re not a bot",
+    "sign in to confirm",
+    "login required",
+    "po token",
+    "po_token",
+    "http error 403",
+    "forbidden",
+    "rate-limit reached",
+    "too many requests",
+    "http error 429",
+    # Browser impersonation can fail independently of yt-dlp (DNS, TLS or a
+    # proxy quirk), so transient transport errors get the plain handler too.
+    "timed out",
+    "timeout",
+    "connection reset",
+    "connection refused",
+    "connection aborted",
+    "network is unreachable",
+    "failed to resolve",
+    "could not resolve",
+    "transporterror",
+    "urlopen error",
+)
+
+
+def _retryable(message):
+    text = str(message).lower()
+    return any(marker in text for marker in _RETRY_MARKERS)
+
+
+def _attempts():
+    """yt-dlp variants ordered from most capable to the bot's plain setup.
+
+    The bot runs yt-dlp without cookies and without a JavaScript runtime, so it
+    only asks YouTube for the cookie-free clients. The last variant reproduces
+    that exact setup (no impersonation, no client override).
+    """
+    variants = []
+    target = _impersonate_target()
+    if target is not None:
+        variants.append({"impersonate": target})
+    variants.append(
+        {"extractor_args": {"youtube": {"player_client": ["visionos", "tv_samsung"]}}}
+    )
+    variants.append({})
+    return variants
+
+
 def _download_sync(project_id, url, proxy, ident, stop):
     try:
         import yt_dlp
@@ -142,8 +220,12 @@ def _download_sync(project_id, url, proxy, ident, stop):
     template = str(folder / (project_id + ".ytdlp")) + ".%(ext)s"
     destination = folder / (project_id + ".media")
     destination.unlink(missing_ok=True)
-    for old in folder.glob(project_id + ".ytdlp.*"):
-        old.unlink(missing_ok=True)
+
+    def clean_partials():
+        for old in folder.glob(project_id + ".ytdlp.*"):
+            old.unlink(missing_ok=True)
+
+    clean_partials()
 
     last_space_check = 0.0
     last_progress = 0.0
@@ -182,6 +264,8 @@ def _download_sync(project_id, url, proxy, ident, stop):
             return "Live and upcoming YouTube streams cannot be imported."
         return None
 
+    # Transfer tuning mirrors the Telegram bot importer: more retries, larger
+    # fragments and parallel fragment downloads.
     options = {
         "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
         "merge_output_format": "mp4",
@@ -190,17 +274,20 @@ def _download_sync(project_id, url, proxy, ident, stop):
         "playlist_items": "1",
         "match_filter": live_or_upcoming,
         "progress_hooks": [progress],
-        "socket_timeout": 20,
-        "retries": 3,
-        "fragment_retries": 3,
-        "concurrent_fragment_downloads": 1,
+        "socket_timeout": 30,
+        "retries": 10,
+        "fragment_retries": 10,
+        "file_access_retries": 5,
+        "extractor_retries": 3,
+        "concurrent_fragment_downloads": 16,
+        "buffersize": 1024 * 64,
+        "http_chunk_size": 10 * 1024 * 1024,
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
         "no_color": True,
         "cachedir": False,
         "overwrites": True,
-        "continuedl": False,
         "logger": _SilentLogger(),
     }
     if proxy:
@@ -220,35 +307,47 @@ def _download_sync(project_id, url, proxy, ident, stop):
             )
         options["cookiefile"] = str(cookie_path)
 
+    attempts = _attempts()
     try:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
-        if info and info.get("_type") == "playlist":
-            entries = [entry for entry in info.get("entries") or [] if entry]
-            info = entries[0] if entries else {}
-        usable = [
-            path
-            for path in folder.glob(project_id + ".ytdlp.*")
-            if path.is_file()
-            and path.suffix != ".part"
-            and not re.search(r"\.f\d+\.", path.name)
-        ]
-        if not usable:
-            raise ValueError("YouTube did not return a downloadable video file.")
-        produced = max(usable, key=lambda path: path.stat().st_size)
-        if not produced.stat().st_size:
-            raise ValueError("YouTube returned an empty video file.")
-        if stop.is_set() or media.cancelled(ident):
-            raise media.Cancelled()
-        produced.replace(destination)
-        return (info or {}).get("title") or ""
-    except media.Cancelled:
-        raise
-    except yt_dlp.utils.YoutubeDLError as exc:
-        raise ValueError(_friendly_error(str(exc))) from None
+        for index, variant in enumerate(attempts):
+            clean_partials()
+            try:
+                with yt_dlp.YoutubeDL({**options, **variant}) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                if info and info.get("_type") == "playlist":
+                    entries = [entry for entry in info.get("entries") or [] if entry]
+                    info = entries[0] if entries else {}
+                usable = [
+                    path
+                    for path in folder.glob(project_id + ".ytdlp.*")
+                    if path.is_file()
+                    and path.suffix != ".part"
+                    and not re.search(r"\.f\d+\.", path.name)
+                ]
+                if not usable:
+                    raise ValueError("YouTube did not return a downloadable video file.")
+                produced = max(usable, key=lambda path: path.stat().st_size)
+                if not produced.stat().st_size:
+                    raise ValueError("YouTube returned an empty video file.")
+                if stop.is_set() or media.cancelled(ident):
+                    raise media.Cancelled()
+                produced.replace(destination)
+                return (info or {}).get("title") or ""
+            except media.Cancelled:
+                raise
+            except ValueError:
+                raise
+            except yt_dlp.utils.YoutubeDLError as exc:
+                # Only bot checks and transient failures get another attempt; a
+                # private or removed video would fail the same way every time.
+                if not _retryable(exc) or index + 1 == len(attempts):
+                    raise ValueError(_friendly_error(str(exc))) from None
+        raise ValueError(
+            "YouTube could not provide this video. Check that it is public and "
+            "try again."
+        )
     finally:
-        for old in folder.glob(project_id + ".ytdlp.*"):
-            old.unlink(missing_ok=True)
+        clean_partials()
 
 
 class _SilentLogger:
