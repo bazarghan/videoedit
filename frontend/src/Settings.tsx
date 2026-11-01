@@ -21,12 +21,14 @@ import { api, json, size, Settings } from "./types";
 import ProjectDefaultsPanel from "./ProjectDefaults";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
+import { useConfirm } from "./components/ui/confirm-dialog";
 type Props = {
   onSettings: (s: Settings) => void;
   onError: (s: string) => void;
   toast: (s: string) => void;
 };
 export default function SettingsPage({ onSettings, onError, toast }: Props) {
+  const confirm = useConfirm();
   const [settings, setSettings] = useState<Settings | null>(null),
     [apiId, setApiId] = useState(""),
     [hash, setHash] = useState(""),
@@ -542,16 +544,23 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                           className="icon-button"
                           aria-label={`حذف ${item.name}`}
                           disabled={busy}
-                          onClick={() => {
-                            if (confirm(`${item.name} از تنظیمات حذف شود؟`))
-                              run(async () => {
-                                await api(
-                                  `/telegram/channels/${item.id}`,
-                                  json("DELETE"),
-                                );
-                                await load();
-                                toast("کانال حذف شد.");
-                              });
+                          onClick={async () => {
+                            if (
+                              !(await confirm({
+                                title: "حذف کانال",
+                                message: `${item.name} از تنظیمات حذف شود؟`,
+                                confirmLabel: "حذف کانال",
+                              }))
+                            )
+                              return;
+                            run(async () => {
+                              await api(
+                                `/telegram/channels/${item.id}`,
+                                json("DELETE"),
+                              );
+                              await load();
+                              toast("کانال حذف شد.");
+                            });
                           }}
                         >
                           <Trash2 size={15} />
@@ -686,24 +695,28 @@ export default function SettingsPage({ onSettings, onError, toast }: Props) {
                           className="icon-button"
                           aria-label={`پاک‌سازی ${name}`}
                           disabled={busy}
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              confirm(
-                                name === "sources"
-                                  ? "همه ویدیوهای اصلی حذف شوند؟ خروجی‌های موجود باقی می‌مانند، اما این پروژه‌ها دیگر قابل رندر نیستند."
-                                  : name === "renders"
-                                    ? "همه کلیپ‌های رندرشده و پیش‌نمایش‌های رندرشده حذف شوند؟"
-                                    : "همه تصاویر بندانگشتی پروژه حذف شوند؟ پروژه‌ها ویدیوها و رندرهای خود را حفظ می‌کنند.",
-                              )
+                              !(await confirm({
+                                title: "پاک‌سازی فایل‌ها",
+                                message:
+                                  name === "sources"
+                                    ? "همه ویدیوهای اصلی حذف شوند؟ خروجی‌های موجود باقی می‌مانند، اما این پروژه‌ها دیگر قابل رندر نیستند."
+                                    : name === "renders"
+                                      ? "همه کلیپ‌های رندرشده و پیش‌نمایش‌های رندرشده حذف شوند؟"
+                                      : "همه تصاویر بندانگشتی پروژه حذف شوند؟ پروژه‌ها ویدیوها و رندرهای خود را حفظ می‌کنند.",
+                                confirmLabel: "پاک‌سازی",
+                              }))
                             )
-                              run(async () => {
-                                await api(
-                                  `/settings/cleanup/${name}`,
-                                  json("POST"),
-                                );
-                                await load();
-                                toast("فایل‌ها پاک‌سازی شدند.");
-                              });
+                              return;
+                            run(async () => {
+                              await api(
+                                `/settings/cleanup/${name}`,
+                                json("POST"),
+                              );
+                              await load();
+                              toast("فایل‌ها پاک‌سازی شدند.");
+                            });
                           }}
                         >
                           <Trash2 size={16} />

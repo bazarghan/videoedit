@@ -49,6 +49,7 @@ import {
 } from "./lib/ffmpegEngine";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
+import { useConfirm } from "./components/ui/confirm-dialog";
 
 const emptyProxy: DownloadProxyDraft = {
   host: "",
@@ -80,6 +81,7 @@ const statusLabels: Record<string, string> = {
 const statusLabel = (status: string) => statusLabels[status] || status;
 
 export default function App() {
+  const confirm = useConfirm();
   const [authenticated, setAuthenticated] = useState<boolean | null>(null),
     [page, setPage] = useState("projects"),
     [selected, setSelected] = useState("");
@@ -295,9 +297,13 @@ export default function App() {
       const message = (e as Error).message;
       if (
         message.includes("ffmpeg.wasm") &&
-        confirm(
-          `${message}\n\nآیا فایل (${size(file.size)}) برای رندر روی سرور آپلود شود؟`,
-        )
+        (await confirm({
+          title: "رندر روی سرور",
+          message: `${message}\n\nآیا فایل (${size(file.size)}) برای رندر روی سرور آپلود شود؟`,
+          confirmLabel: "آپلود و رندر",
+          cancelLabel: "انصراف",
+          danger: false,
+        }))
       ) {
         fallbackStarted = true;
         setLocalStatus("در حال آپلود فایل برای رندر روی سرور…");
@@ -569,20 +575,25 @@ export default function App() {
                         <button
                           className="icon-button"
                           aria-label={`حذف ${p.name}`}
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              confirm("این پروژه و همه رسانه‌هایش حذف شوند؟")
-                            ) {
-                              setLocalFiles((old) => {
-                                const next = { ...old };
-                                delete next[p.id];
-                                return next;
-                              });
-                              action(
-                                () => api(`/projects/${p.id}`, json("DELETE")),
-                                "پروژه حذف شد.",
-                              );
-                            }
+                              !(await confirm({
+                                title: "حذف پروژه",
+                                message:
+                                  "این پروژه و همه رسانه‌هایش حذف شوند؟ این کار قابل بازگشت نیست.",
+                                confirmLabel: "حذف پروژه",
+                              }))
+                            )
+                              return;
+                            setLocalFiles((old) => {
+                              const next = { ...old };
+                              delete next[p.id];
+                              return next;
+                            });
+                            action(
+                              () => api(`/projects/${p.id}`, json("DELETE")),
+                              "پروژه حذف شد.",
+                            );
                           }}
                         >
                           <Trash2 size={15} />
@@ -723,13 +734,16 @@ export default function App() {
                       ) && (
                         <button
                           className="secondary"
-                          onClick={() => {
+                          onClick={async () => {
                             if (
                               j.kind === "telegram" &&
                               j.status === "interrupted" &&
-                              !confirm(
-                                "این ارسال ممکن است قبلاً انجام شده باشد. تکرار می‌کنید و خطر ارسال تکراری را می‌پذیرید؟",
-                              )
+                              !(await confirm({
+                                title: "تکرار ارسال تلگرام",
+                                message:
+                                  "این ارسال ممکن است قبلاً انجام شده باشد. تکرار می‌کنید و خطر ارسال تکراری را می‌پذیرید؟",
+                                confirmLabel: "تکرار ارسال",
+                              }))
                             )
                               return;
                             action(
@@ -828,12 +842,20 @@ export default function App() {
                         <button
                           className="icon-button"
                           aria-label="حذف کلیپ"
-                          onClick={() => {
-                            if (confirm("این کلیپ رندرشده حذف شود؟"))
-                              action(
-                                () => api(`/clips/${c.id}`, json("DELETE")),
-                                "کلیپ حذف شد.",
-                              );
+                          onClick={async () => {
+                            if (
+                              !(await confirm({
+                                title: "حذف کلیپ",
+                                message:
+                                  "این کلیپ رندرشده حذف شود؟ این کار قابل بازگشت نیست.",
+                                confirmLabel: "حذف کلیپ",
+                              }))
+                            )
+                              return;
+                            action(
+                              () => api(`/clips/${c.id}`, json("DELETE")),
+                              "کلیپ حذف شد.",
+                            );
                           }}
                         >
                           <Trash2 size={16} />

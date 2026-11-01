@@ -6571,3 +6571,65 @@ input[autocomplete="username"] {
   border-radius: 8px;
   background: #3a2020;
 }
+
+.confirm-shade {
+  z-index: 90;
+}
+.confirm-dialog {
+  width: 440px;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px 16px;
+  align-items: start;
+}
+.confirm-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--elevation-2, #242833);
+  color: var(--text-secondary, #a8adb9);
+}
+.confirm-icon.is-danger {
+  background: #3a2020;
+  color: #ff8a8a;
+}
+.confirm-copy h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.5;
+}
+.confirm-copy p {
+  margin: 0;
+  color: var(--muted, #949eae);
+  font-size: 13px;
+  line-height: 1.9;
+  white-space: pre-line;
+}
+.confirm-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+.confirm-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #a83b3b;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.confirm-danger:hover {
+  background: #bf4747;
+}
