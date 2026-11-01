@@ -227,6 +227,47 @@ class ImportURL(Strict):
     use_proxy: bool = False
 
 
+class LocalAudioTrack(Strict):
+    index: int = Field(ge=0)
+    codec: str = Field(default="unknown", max_length=40)
+    language: str = Field(default="", max_length=80)
+    title: str = Field(default="", max_length=200)
+
+
+class LocalSubtitleTrack(Strict):
+    index: int = Field(ge=0)
+    codec: str = Field(default="unknown", max_length=40)
+    language: str = Field(default="", max_length=80)
+    title: str = Field(default="", max_length=200)
+    editable: bool = True
+
+
+class LocalMetadata(Strict):
+    """Source metadata extracted in the browser, shaped like ``media.probe``."""
+
+    duration: float = Field(gt=0, le=60 * 60 * 24)
+    size: int = Field(default=0, ge=0)
+    width: int = Field(gt=0, le=16384)
+    height: int = Field(gt=0, le=16384)
+    video_codec: str | None = Field(default=None, max_length=40)
+    pixel_format: str | None = Field(default=None, max_length=40)
+    browser_container: str | None = Field(default=None, max_length=20)
+    video_codec_tag: str | None = Field(default=None, max_length=20)
+    video_duration: float = Field(default=0, ge=0)
+    fps: float = Field(default=0, ge=0, le=240)
+    format: str = Field(default="", max_length=200)
+    audio: list[LocalAudioTrack] = Field(default_factory=list)
+    subtitles: list[LocalSubtitleTrack] = Field(default_factory=list)
+
+
+class LocalImport(Strict):
+    name: str = Field(default="", max_length=120)
+    metadata: LocalMetadata
+    # A small JPEG from the browser so the project card has a thumbnail even
+    # though the source video is never uploaded.
+    thumbnail: str = Field(default="", max_length=4_000_000)
+
+
 class DownloadProxyConfig(Strict):
     host: str = Field(min_length=1, max_length=253)
     port: int = Field(default=1080, ge=1, le=65535)
@@ -296,6 +337,9 @@ class CoverFrameSelection(Strict):
     start: float | None = Field(default=None, ge=0)
     end: float | None = Field(default=None, gt=0)
     edit: Edit | None = None
+    # Local/browser projects extract the clean frame themselves and send a
+    # JPEG data URL; the server never has the original source to seek in.
+    image: str | None = Field(default=None, max_length=4_000_000)
 
 
 class CoverFrameCandidates(Strict):

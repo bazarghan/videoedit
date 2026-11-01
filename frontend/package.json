@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "predev": "node scripts/copy-ffmpeg.mjs",
     "build": "tsc -b && vite build",
+    "prebuild": "node scripts/copy-ffmpeg.mjs",
     "format": "prettier --write src vite.config.ts"
   },
   "dependencies": {
@@ -14,6 +16,8 @@
     "@codemirror/language": "^6.13.1",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@lezer/highlight": "^1.2.5",
     "@radix-ui/react-checkbox": "^1.4.1",
     "@radix-ui/react-direction": "^1.2.0",

@@ -10,5 +10,12 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  server: { proxy: { "/api": "http://127.0.0.1:8000" } },
+  server: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+    proxy: { "/api": "http://127.0.0.1:8000" },
+  },
+  worker: { format: "es" },
 });

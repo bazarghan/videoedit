@@ -6528,3 +6528,38 @@ input[autocomplete="username"] {
     flex: 1 1 auto;
   }
 }
+
+.local-render-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #58614f;
+  border-radius: 8px;
+  background: #242d2350;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.local-render-status .meter {
+  width: 90px;
+  margin: 0;
+}
+.local-render-status .icon-button {
+  padding: 2px;
+}
+.local-file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+}
+.local-file-button input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}

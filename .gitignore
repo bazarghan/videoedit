@@ -15,3 +15,6 @@ backups/
 
 compose.override.yaml
 deploy-local/
+
+# Generated at dev/build time from @ffmpeg/core
+frontend/public/ffmpeg/

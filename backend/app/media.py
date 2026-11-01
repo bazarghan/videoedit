@@ -1,14 +1,16 @@
 import asyncio
 import json
 import re
+import shutil
 import time
 from pathlib import Path
 from fractions import Fraction
+from urllib.parse import quote
 
 import pysubs2
 
 from . import store as s
-from .font_catalog import FONT_DIR, font_path
+from .font_catalog import BUNDLED_FONTS, FONT_DIR, font_path
 from .models import Edit
 
 TEXT_SUBS = {"subrip", "ass", "ssa", "mov_text", "webvtt", "text"}
@@ -869,21 +871,79 @@ def filter_path(path):
     return str(path).replace("\\", "\\\\").replace(":", r"\:").replace("'", r"\'")
 
 
-async def render(project, payload, ident):
+class RenderPaths:
+    """Resolve paths for a normal server render or a browser render plan."""
+
+    def __init__(self, source, dest, work, browser=False):
+        self.source = source
+        self.dest = dest
+        self.work = Path(work)
+        self.browser = browser
+        self.ass_files = []
+        self.text_files = []
+        self.asset_files = []
+        self.fonts = []
+        self._font_keys = {}
+        self._asset_keys = set()
+
+    def work_path(self, path):
+        path = Path(path)
+        return f"/work/{path.name}" if self.browser else str(path)
+
+    def fonts_dir(self):
+        return "/fonts" if self.browser else str(FONT_DIR)
+
+    def asset(self, asset):
+        if not self.browser:
+            return asset["path"]
+        suffix = Path(asset["path"]).suffix.lower()
+        virtual = f"/assets/{asset['id']}{suffix}"
+        if virtual not in self._asset_keys:
+            self._asset_keys.add(virtual)
+            self.asset_files.append(
+                {"path": virtual, "url": f"/api/media/asset/{asset['id']}"}
+            )
+        return virtual
+
+    def font(self, family, bold, path):
+        if not self.browser:
+            return str(path)
+        key = str(path)
+        if key in self._font_keys:
+            return self._font_keys[key]
+        virtual = f"/fonts/font{len(self.fonts)}{Path(path).suffix or '.ttf'}"
+        self._font_keys[key] = virtual
+        self.fonts.append(
+            {
+                "path": virtual,
+                "url": "/api/fonts/file?family="
+                + quote(family)
+                + f"&bold={1 if bold else 0}",
+            }
+        )
+        return virtual
+
+
+async def build_render_args(
+    project,
+    payload,
+    paths,
+    duration,
+    width,
+    height,
+    threads=3,
+    faststart=True,
+):
+    """Build the ffmpeg argv shared by the server renderer and the browser.
+
+    ``paths`` hides whether inputs and outputs live on the server filesystem or
+    in the WebAssembly filesystem. Filter graphs, subtitle styles, watermark
+    placement and encoder settings therefore stay byte-for-byte identical.
+    """
     edit = Edit.model_validate(payload["edit"])
     meta = json.loads(project["metadata"])
-    if edit.end <= edit.start or edit.end > meta["duration"] + 0.05:
-        raise ValueError(
-            "The clip end must follow the start and stay inside the video."
-        )
-    preview = bool(payload.get("preview"))
-    duration = min(edit.end - edit.start, 6) if preview else edit.end - edit.start
-    w, h = dimensions(meta, edit)
-    work = s.DATA / "work" / ident
-    work.mkdir(exist_ok=True)
-    clip_id = s.uid()
-    dest = s.DATA / "renders" / (clip_id + ".mp4")
-    s.space_for(max(50 * 1024**2, int(duration * w * h / 3)))
+    w, h = width, height
+    work = paths.work
     args = [
         "ffmpeg",
         "-hide_banner",
@@ -893,7 +953,7 @@ async def render(project, payload, ident):
         "-ss",
         str(edit.start),
         "-i",
-        project["source"],
+        paths.source,
     ]
     filters = []
     wm = edit.watermark
@@ -908,7 +968,7 @@ async def render(project, payload, ident):
             raise ValueError("Upload a watermark image first.")
         image_index = next_input
         next_input += 1
-        args += ["-loop", "1", "-i", asset["path"]]
+        args += ["-loop", "1", "-i", paths.asset(asset)]
     music_index = None
     if edit.audio.music_id:
         asset = s.one(
@@ -918,7 +978,8 @@ async def render(project, payload, ident):
         if not asset:
             raise ValueError("The background music no longer exists.")
         music_index = next_input
-        args += ["-stream_loop", "-1", "-i", asset["path"]]
+        next_input += 1
+        args += ["-stream_loop", "-1", "-i", paths.asset(asset)]
     soft_sub_index = None
     if edit.subtitles.soft:
         text_tracks = [
@@ -949,20 +1010,35 @@ async def render(project, payload, ident):
             payload.get("subtitle_snapshot"),
             payload.get("subtitle_snapshot_fa"),
         )
-        vf += f",ass=filename='{filter_path(subs)}':fontsdir='{filter_path(FONT_DIR)}'"
+        paths.ass_files.append(subs)
+        vf += (
+            f",ass=filename='{filter_path(paths.work_path(subs))}'"
+            f":fontsdir='{filter_path(paths.fonts_dir())}'"
+        )
     visibility_end = duration if wm.end is None else min(wm.end, duration)
     enable = f"between(t,{wm.start},{visibility_end})"
     if wm.kind == "text" and wm.template:
         subs = make_watermark(wm, duration, w, h, work)
         if subs:
-            vf += f",ass=filename='{filter_path(subs)}':fontsdir='{filter_path(FONT_DIR)}'"
+            paths.ass_files.append(subs)
+            vf += (
+                f",ass=filename='{filter_path(paths.work_path(subs))}'"
+                f":fontsdir='{filter_path(paths.fonts_dir())}'"
+            )
     elif wm.kind == "text" and wm.text:
         textfile = work / "watermark.txt"
         textfile.write_text(wm.text)
+        paths.text_files.append(textfile)
         fontpath = await font_path(wm.font)
         fontsize = wm.size * h / 1080
         margin = wm.margin * h / 1080
-        vf += f",drawtext=fontfile='{filter_path(fontpath)}':textfile='{filter_path(textfile)}':expansion=none:fontsize={fontsize}:fontcolor={wm.color}@{wm.opacity}:x={margin}+(w-tw-2*{margin})*{wm.x}:y={margin}+(h-th-2*{margin})*{wm.y}:enable='{enable}'"
+        vf += (
+            f",drawtext=fontfile='{filter_path(paths.font(wm.font, False, fontpath))}'"
+            f":textfile='{filter_path(paths.work_path(textfile))}'"
+            f":expansion=none:fontsize={fontsize}:fontcolor={wm.color}@{wm.opacity}"
+            f":x={margin}+(w-tw-2*{margin})*{wm.x}"
+            f":y={margin}+(h-th-2*{margin})*{wm.y}:enable='{enable}'"
+        )
     filters.append(f"[0:v:0]{vf}[base]")
     video = "base"
     if image_index is not None:
@@ -1026,20 +1102,232 @@ async def render(project, payload, ident):
         "-crf",
         str(crf),
         "-threads",
-        "3",
+        str(threads),
         "-pix_fmt",
         "yuv420p",
         "-c:a",
         "aac",
         "-b:a",
         "192k",
-        "-movflags",
-        "+faststart",
-        "-progress",
-        "pipe:1",
-        "-nostats",
-        str(dest),
     ]
+    if faststart:
+        args += ["-movflags", "+faststart"]
+    args += ["-progress", "pipe:1", "-nostats", paths.dest]
+    return args
+
+
+async def resolved_font_family(family, bold=False):
+    """Return the family name fontconfig uses for a requested font."""
+    if family in BUNDLED_FONTS:
+        return family
+    pattern = f"{family}:bold" if bold else family
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "fc-match",
+            "-f",
+            "%{family[0]}",
+            pattern,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        name = out.decode("utf-8", "ignore").strip().split(",")[0].strip()
+        return name or family
+    except OSError:
+        return family
+
+
+def rewrite_ass_fonts(text, aliases):
+    """Point an ASS file at the exact families available to libass.wasm."""
+    if not aliases:
+        return text
+
+    def style(match):
+        parts = match.group(0).split(",")
+        if len(parts) > 1:
+            name = parts[1].strip()
+            parts[1] = aliases.get(name, name)
+        return ",".join(parts)
+
+    text = re.sub(r"(?m)^Style:.*$", style, text)
+
+    def fn(match):
+        name = match.group(1)
+        return "\\fn" + aliases.get(name, name)
+
+    return re.sub(r"\\fn([^\\}]*)", fn, text)
+
+
+async def install_plan_fonts(paths):
+    families = set()
+    for path in paths.ass_files:
+        text = path.read_text(encoding="utf-8-sig")
+        for line in text.splitlines():
+            if line.startswith("Style:"):
+                parts = line.split(",")
+                if len(parts) > 1 and parts[1].strip():
+                    families.add(parts[1].strip())
+        families.update(re.findall(r"\\fn([^\\}]*)", text))
+    aliases = {}
+    for family in sorted(families):
+        resolved = await resolved_font_family(family)
+        aliases[family] = resolved
+        for bold in (False, True):
+            try:
+                path = await font_path(family, bold)
+            except Exception:
+                continue
+            if path and Path(path).is_file():
+                paths.font(family, bold, path)
+    return aliases
+
+
+async def browser_plan(project, payload, threads=1):
+    """Return everything a browser needs to run the same ffmpeg command."""
+    edit = Edit.model_validate(payload["edit"])
+    meta = json.loads(project["metadata"])
+    if edit.end <= edit.start or edit.end > meta["duration"] + 0.05:
+        raise ValueError(
+            "The clip end must follow the start and stay inside the video."
+        )
+    preview = bool(payload.get("preview"))
+    duration = min(edit.end - edit.start, 6) if preview else edit.end - edit.start
+    w, h = dimensions(meta, edit)
+    # WebAssembly has a ~2 GB linear-memory ceiling and the encoded file is
+    # copied out in one piece. Keep a generous margin instead of letting a
+    # very long render fail after minutes of work.
+    estimated = duration * 0.35 * (w * h) / (1920 * 1080) * 1024**2
+    if estimated > 1.2 * 1024**3:
+        raise ValueError(
+            "This cut is too long for a browser render. Shorten the clip or "
+            "lower the output resolution."
+        )
+    work = s.DATA / "work" / ("browser-" + s.uid())
+    work.mkdir(parents=True, exist_ok=True)
+    paths = RenderPaths("{{INPUT}}", "/output.mp4", work, browser=True)
+    try:
+        args = await build_render_args(
+            project,
+            payload,
+            paths,
+            duration,
+            w,
+            h,
+            threads=max(1, min(16, int(threads or 1))),
+            faststart=False,
+        )
+        aliases = await install_plan_fonts(paths)
+        if args and args[0] == "ffmpeg":
+            args = args[1:]
+        files = []
+        for path in paths.ass_files:
+            files.append(
+                {
+                    "path": paths.work_path(path),
+                    "content": rewrite_ass_fonts(
+                        path.read_text(encoding="utf-8-sig"), aliases
+                    ),
+                }
+            )
+        for path in paths.text_files:
+            files.append(
+                {
+                    "path": paths.work_path(path),
+                    "content": path.read_text(encoding="utf-8"),
+                }
+            )
+        return {
+            "args": args,
+            "input_placeholder": "{{INPUT}}",
+            "output": "/output.mp4",
+            "duration": duration,
+            "width": w,
+            "height": h,
+            "files": files,
+            "assets": paths.asset_files,
+            "fonts": paths.fonts,
+            "signature": payload.get("signature"),
+            "preview": preview,
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+async def install_project_cover(project, clip, edit, duration=None, ident=None):
+    """Attach the clean frame chosen in the browser to a rendered clip."""
+    frame = json.loads(project["metadata"]).get("cover_frame") or {}
+    revision = frame.get("revision", "")
+    if not re.fullmatch(r"[0-9a-f]{32}", revision):
+        return None
+    span = duration if duration is not None else edit.end - edit.start
+    if not edit.start <= float(frame.get("time", -1)) < edit.start + span:
+        # The cut changed after the frame was chosen; fall back to the
+        # rendered frame exactly like a server render does.
+        return None
+    source = s.DATA / "renders" / f"{project['id']}-cover-frame-{revision}.jpg"
+    if not source.exists():
+        return None
+    cover_id = s.uid()
+    cover_path = s.DATA / "renders" / f"{clip['id']}-{cover_id}-cover.jpg"
+    thumb_path = s.DATA / "renders" / f"{clip['id']}-{cover_id}-thumb.jpg"
+    s.space_for(source.stat().st_size + 1024**2)
+    try:
+        shutil.copyfile(source, cover_path)
+        for quality in (6, 12, 20, 31):
+            await run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(source),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale='min(320,iw)':'min(320,ih)':force_original_aspect_ratio=decrease,setsar=1",
+                    "-q:v",
+                    str(quality),
+                    "-threads",
+                    "1",
+                    str(thumb_path),
+                ],
+                ident,
+            )
+            if thumb_path.exists() and thumb_path.stat().st_size < 20 * 1024:
+                break
+        return {
+            "time": round(max(0, frame["time"] - edit.start), 3),
+            "source_time": round(float(frame["time"]), 3),
+            "mode": "manual",
+            "origin": "prerender",
+            "revision": cover_id,
+        }
+    except BaseException:
+        cover_path.unlink(missing_ok=True)
+        thumb_path.unlink(missing_ok=True)
+        raise
+
+
+async def render(project, payload, ident):
+    edit = Edit.model_validate(payload["edit"])
+    meta = json.loads(project["metadata"])
+    if edit.end <= edit.start or edit.end > meta["duration"] + 0.05:
+        raise ValueError(
+            "The clip end must follow the start and stay inside the video."
+        )
+    preview = bool(payload.get("preview"))
+    duration = min(edit.end - edit.start, 6) if preview else edit.end - edit.start
+    w, h = dimensions(meta, edit)
+    work = s.DATA / "work" / ident
+    work.mkdir(exist_ok=True)
+    clip_id = s.uid()
+    dest = s.DATA / "renders" / (clip_id + ".mp4")
+    s.space_for(max(50 * 1024**2, int(duration * w * h / 3)))
+    paths = RenderPaths(project["source"], str(dest), work)
+    args = await build_render_args(
+        project, payload, paths, duration, w, h, threads=3, faststart=True
+    )
     try:
         await run(args, ident, duration)
         info = await probe(dest)
@@ -1098,6 +1386,4 @@ async def render(project, payload, ident):
             path.unlink(missing_ok=True)
         raise
     finally:
-        import shutil
-
         shutil.rmtree(work, ignore_errors=True)

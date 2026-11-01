@@ -212,3 +212,73 @@ def test_dual_subtitle_layout_places_english_above_persian(tmp_path):
     assert media.RTL_EMBED_START not in subs[1].text
     s.execute("DELETE FROM subtitles WHERE project_id=?", (project_id,))
     s.execute("DELETE FROM projects WHERE id=?", (project_id,))
+
+
+def test_run_uses_uploaded_clip_audio_and_shifts_cues(monkeypatch, tmp_path):
+    project_id = s.uid()
+    s.execute(
+        "INSERT INTO projects(id,name,source,metadata,edit,status,created) VALUES (?,?,?,?,?,?,?)",
+        (
+            project_id,
+            "Browser subtitles",
+            None,
+            json.dumps({"duration": 20}),
+            Edit().model_dump_json(),
+            "ready",
+            0,
+        ),
+    )
+    s.set_setting("elevenlabs", {"api_key": "eleven", "model": "scribe_v1"})
+    s.set_setting("ai", {"api_key": "router", "model": "test-model"})
+    audio = tmp_path / "clip.mp3"
+    audio.write_bytes(b"audio")
+    job_id = s.uid()
+    s.execute(
+        "INSERT INTO jobs(id,kind,project_id,payload,status,created) VALUES (?,?,?,?,?,?)",
+        (job_id, "autosubtitle", project_id, "{}", "running", 0),
+    )
+    extract = AsyncMock(side_effect=AssertionError("must not re-extract audio"))
+    monkeypatch.setattr(autosubtitle.media, "run", extract)
+    monkeypatch.setattr(
+        autosubtitle,
+        "transcribe_audio",
+        AsyncMock(
+            return_value={
+                "words": [
+                    {"type": "word", "text": "Clip", "start": 0.0, "end": 0.6},
+                    {"type": "word", "text": "only.", "start": 0.8, "end": 1.4},
+                ]
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        autosubtitle,
+        "translate_cues",
+        AsyncMock(return_value=[{"start": 0.0, "end": 1.4, "text": "فقط کلیپ."}]),
+    )
+    result = asyncio.run(
+        autosubtitle.run(
+            s.one("SELECT * FROM projects WHERE id=?", (project_id,)),
+            {
+                "language": "en",
+                "translate": True,
+                "audio_path": str(audio),
+                "offset": 10.5,
+                "duration": 20,
+            },
+            job_id,
+        )
+    )
+    assert result["cues"] == 1
+    assert not audio.exists()
+    extract.assert_not_awaited()
+    track = s.one(
+        "SELECT * FROM subtitles WHERE project_id=? AND role='fa'", (project_id,)
+    )
+    cues = json.loads(track["cues"])
+    assert cues[0]["start"] == pytest.approx(10.5)
+    assert cues[0]["end"] == pytest.approx(11.9)
+    s.execute("DELETE FROM subtitles WHERE project_id=?", (project_id,))
+    s.execute("DELETE FROM projects WHERE id=?", (project_id,))
+    s.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    s.set_setting("elevenlabs", {})

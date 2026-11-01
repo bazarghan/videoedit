@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import json
 import mimetypes
@@ -9,6 +10,7 @@ import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import get_args
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -21,7 +23,7 @@ from . import media
 from . import store as s
 from . import youtube
 from .autosubtitle import max_duration_minutes
-from .font_catalog import FONT_SLUGS, font_path
+from .font_catalog import FONT_SLUGS, FontFamily, font_path
 from .models import (
     DEFAULT_CAPTION_PROMPT,
     AIConfig,
@@ -34,6 +36,7 @@ from .models import (
     Edit,
     ElevenLabsConfig,
     ImportURL,
+    LocalImport,
     Login,
     ProjectDefaults,
     ProjectDefaultsPatch,
@@ -142,8 +145,11 @@ async def guard(request, call_next):
             return JSONResponse({"detail": "Please sign in to continue."}, 401)
     upload_route = request.method == "POST" and (
         path == "/api/import/upload"
+        or path == "/api/import/local"
         or "/assets/" in path
         or path.endswith("/subtitles")
+        or path.endswith("/clips")
+        or path.endswith("/autosubtitle-local")
     )
     if upload_route:
         try:
@@ -162,6 +168,8 @@ async def guard(request, call_next):
             if path.endswith("/watermark")
             else 1024**3
             if "/assets/" in path
+            else 256 * 1024**2
+            if path.endswith("/autosubtitle-local")
             else 10 * 1024**2
             if path.endswith("/subtitles")
             else int(s.setting("storage_limit_gb", 20)) * 1024**3
@@ -196,8 +204,14 @@ async def guard(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
+    # Keep the document cross-origin isolated. The current single-threaded
+    # ffmpeg core does not require it, but it lets a future threaded build use
+    # SharedArrayBuffer without another deployment change.
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'wasm-unsafe-eval'; connect-src 'self'; font-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
     if path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
@@ -414,6 +428,67 @@ async def import_upload(file: UploadFile = File(...)):
         raise
 
 
+@app.post("/api/import/local")
+async def import_local(body: LocalImport):
+    """Create a project whose source stays in the browser.
+
+    Only the metadata and a small thumbnail cross the wire here; the rendered
+    MP4 is uploaded later through ``/api/projects/{ident}/clips``.
+    """
+    meta = body.metadata.model_dump()
+    if not meta["video_codec"]:
+        raise ValueError("Choose a video with a readable video stream.")
+    meta["local"] = True
+    if not meta["video_duration"]:
+        meta["video_duration"] = meta["duration"]
+    name = body.name.strip()[:120] or "Browser video"
+    ident = s.uid()
+    thumbnail = None
+    try:
+        if body.thumbnail:
+            thumbnail = save_local_thumbnail(body.thumbnail, ident)
+        new_project(name, status="ready", source=None, ident=ident)
+        s.execute(
+            "UPDATE projects SET metadata=?, thumbnail=? WHERE id=?",
+            (json.dumps(meta), str(thumbnail) if thumbnail else None, ident),
+        )
+        row = s.one("SELECT edit FROM projects WHERE id=?", (ident,))
+        edit = Edit.model_validate(json.loads(row["edit"])).model_dump()
+        edit["end"] = meta["duration"]
+        s.execute(
+            "UPDATE projects SET edit=? WHERE id=?", (json.dumps(edit), ident)
+        )
+        return {"project_id": ident, "local": True}
+    except BaseException:
+        if thumbnail:
+            Path(thumbnail).unlink(missing_ok=True)
+        s.execute("DELETE FROM projects WHERE id=?", (ident,))
+        raise
+
+
+def decode_jpeg_data_url(data: str, max_bytes: int = 2 * 1024**2):
+    match = re.fullmatch(
+        r"data:image/jpeg;base64,([A-Za-z0-9+/=\s]+)", data.strip(), re.DOTALL
+    )
+    if not match:
+        raise ValueError("The image must be a JPEG data URL.")
+    try:
+        raw = base64.b64decode(re.sub(r"\s+", "", match.group(1)), validate=True)
+    except ValueError:
+        raise ValueError("The image could not be decoded.") from None
+    if not raw or len(raw) > max_bytes:
+        raise ValueError("The image is too large.")
+    return raw
+
+
+def save_local_thumbnail(data: str, ident: str):
+    raw = decode_jpeg_data_url(data)
+    s.space_for(len(raw))
+    path = s.DATA / "previews" / (ident + ".jpg")
+    path.write_bytes(raw)
+    return path
+
+
 @app.patch("/api/projects/{ident}")
 async def rename_project(ident: str, body: Rename):
     project(ident)
@@ -434,7 +509,7 @@ async def save_edit(ident: str, body: Edit):
 
 def validate_edit(row, body):
     duration = json.loads(row["metadata"]).get("duration", 0)
-    if not row["source"]:
+    if not row["source"] and not json.loads(row["metadata"]).get("local"):
         raise ValueError(
             "The original source was removed. Import the video again to render."
         )
@@ -507,9 +582,160 @@ def existing_render(ident, fingerprint, preview):
     return "done" if rendered_clip(ident, fingerprint, preview) else None
 
 
+@app.post("/api/projects/{ident}/render-plan")
+async def browser_render_plan(
+    ident: str, body: Edit, preview: bool = False, threads: int = 1
+):
+    """Describe the exact ffmpeg command for a browser-only project."""
+    row = project(ident)
+    if not json.loads(row["metadata"]).get("local"):
+        raise HTTPException(400, "This project renders on the server.")
+    validate_edit(row, body)
+    fingerprint = render_fingerprint(row, body, preview)
+    payload = {
+        "edit": body.model_dump(),
+        "preview": preview,
+        "signature": fingerprint,
+        "subtitle_snapshot": s.one(
+            "SELECT * FROM subtitles WHERE id=? AND project_id=?",
+            (body.subtitles.track_id, ident),
+        )
+        if body.subtitles.track_id
+        else None,
+        "subtitle_snapshot_fa": s.one(
+            "SELECT * FROM subtitles WHERE id=? AND project_id=?",
+            (body.subtitles.fa_track_id, ident),
+        )
+        if body.subtitles.fa_track_id
+        else None,
+    }
+    plan = await media.browser_plan(row, payload, threads=threads)
+    s.execute(
+        "UPDATE projects SET edit=? WHERE id=?", (body.model_dump_json(), ident)
+    )
+    return plan
+
+
+@app.post("/api/projects/{ident}/clips")
+async def upload_browser_clip(
+    ident: str,
+    file: UploadFile = File(...),
+    edit: str = Form(...),
+    preview: bool = Form(False),
+):
+    """Store the MP4 rendered in the browser as a normal project clip."""
+    row = project(ident)
+    if not json.loads(row["metadata"]).get("local"):
+        raise HTTPException(
+            400, "Only browser-only projects upload rendered clips this way."
+        )
+    body = Edit.model_validate_json(edit)
+    validate_edit(row, body)
+    fingerprint = render_fingerprint(row, body, preview)
+    clip_id = s.uid()
+    dest = s.DATA / "renders" / (clip_id + ".mp4")
+    remuxed = s.DATA / "renders" / (clip_id + "-remux.mp4")
+    limit = int(s.setting("storage_limit_gb", 20)) * 1024**3
+    try:
+        await save_upload(file, dest, limit)
+        # The wasm encoder cannot always finalise a fast-start MP4 without
+        # holding a second copy in memory, so remux natively here.
+        await media.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-v",
+                "error",
+                "-y",
+                "-i",
+                str(dest),
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(remuxed),
+            ]
+        )
+        remuxed.replace(dest)
+        info = await media.probe(dest)
+        if not media.telegram_compatible(info):
+            raise ValueError(
+                "The browser export is not a Telegram-compatible MP4. Render it again."
+            )
+        expected_duration = (
+            min(body.end - body.start, 6) if preview else body.end - body.start
+        )
+        expected_width, expected_height = media.dimensions(
+            json.loads(row["metadata"]), body
+        )
+        if (
+            abs(info["width"] - expected_width) > 2
+            or abs(info["height"] - expected_height) > 2
+        ):
+            raise ValueError(
+                "The browser export has a different frame size than the selected output."
+            )
+        if abs(info["duration"] - expected_duration) > 0.35:
+            raise ValueError(
+                "The browser export has a different duration than the selected cut."
+            )
+        if info.get("fps") and abs(info["fps"] - body.fps) > 0.6:
+            raise ValueError(
+                "The browser export has a different frame rate than the selected output."
+            )
+        info["telegram_compatible"] = True
+        info["caption_context"] = {
+            "start": body.start,
+            "end": body.end,
+            "track_id": body.subtitles.track_id,
+            "fa_track_id": body.subtitles.fa_track_id,
+        }
+        info["render_signature"] = fingerprint
+        cover = None
+        try:
+            cover = await media.install_project_cover(
+                row, {"id": clip_id}, body, expected_duration
+            )
+        except Exception:
+            cover = None
+        info["cover"] = cover or await media.make_cover(
+            {"id": clip_id, "path": str(dest)}, info
+        )
+        name = re.sub(r"[^\w\- .]", "", body.filename).strip(" .") or "clip"
+        if preview:
+            name += "-preview"
+        s.execute(
+            "INSERT INTO clips VALUES (?,?,?,?,?,?,?)",
+            (
+                clip_id,
+                ident,
+                name + ".mp4",
+                str(dest),
+                json.dumps(info),
+                time.time(),
+                int(preview),
+            ),
+        )
+        # Do not overwrite the project edit here: the render takes a snapshot,
+        # but the editor may have saved a newer edit while the browser encoded.
+        return public_clip(s.one("SELECT * FROM clips WHERE id=?", (clip_id,)))
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        remuxed.unlink(missing_ok=True)
+        for path in (s.DATA / "renders").glob(clip_id + "-*.jpg"):
+            path.unlink(missing_ok=True)
+        raise
+
+
 @app.post("/api/projects/{ident}/render")
 async def render_project(ident: str, body: Edit, preview: bool = False):
     row = project(ident)
+    if json.loads(row["metadata"]).get("local"):
+        raise HTTPException(
+            400,
+            "This project renders in your browser. Use the editor's render "
+            "buttons; the source video was never uploaded.",
+        )
     validate_edit(row, body)
     fingerprint = render_fingerprint(row, body, preview)
     previous = existing_render(ident, fingerprint, preview)
@@ -614,6 +840,11 @@ async def upload_subtitles(
 @app.post("/api/projects/{ident}/autosubtitle")
 async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
     row = project(ident)
+    if json.loads(row["metadata"]).get("local"):
+        raise ValueError(
+            "Automatic subtitles need the source audio. This project renders "
+            "in your browser and the video was not uploaded."
+        )
     if s.one(
         "SELECT id FROM jobs WHERE project_id=? AND kind='autosubtitle' AND status IN ('queued','running')",
         (ident,),
@@ -652,6 +883,75 @@ async def auto_subtitle(ident: str, body: AutoSubtitleRequest):
             {"language": body.language, "translate": body.translate},
         )
     }
+
+
+@app.post("/api/projects/{ident}/autosubtitle-local")
+async def auto_subtitle_local(
+    ident: str,
+    file: UploadFile = File(...),
+    edit: str = Form(...),
+    language: str = Form("en"),
+    translate: bool = Form(True),
+):
+    """Transcribe only the selected clip's audio for a browser-only project."""
+    row = project(ident)
+    if not json.loads(row["metadata"]).get("local"):
+        raise HTTPException(
+            400, "This project is not a browser-only project."
+        )
+    body = Edit.model_validate_json(edit)
+    validate_edit(row, body)
+    if s.one(
+        "SELECT id FROM jobs WHERE project_id=? AND kind='autosubtitle' AND status IN ('queued','running')",
+        (ident,),
+    ):
+        raise ValueError("Automatic subtitles are already running for this project.")
+    elevenlabs = s.setting("elevenlabs", {})
+    if not elevenlabs.get("api_key"):
+        raise ValueError("Add your ElevenLabs API token in Settings first.")
+    if translate and not s.setting("ai", {}).get("api_key"):
+        raise ValueError("Add your 9Router API token in Settings first.")
+    limit = max_duration_minutes(elevenlabs)
+    clip_duration = body.end - body.start
+    if clip_duration > limit * 60 + 0.5:
+        raise ValueError(
+            f"This clip is {clip_duration / 60:.1f} minutes long. Automatic "
+            f"subtitles are limited to {limit} minutes; raise the limit in "
+            "Settings → Auto subtitles or select a shorter cut."
+        )
+    if len(language) < 2 or len(language) > 12:
+        raise ValueError("Choose a valid transcription language.")
+    latest = s.one(
+        "SELECT status FROM jobs WHERE project_id=? AND kind='autosubtitle' "
+        "ORDER BY created DESC LIMIT 1",
+        (ident,),
+    )
+    if s.one(
+        "SELECT id FROM subtitles WHERE project_id=? AND origin='auto'",
+        (ident,),
+    ) and (not latest or latest["status"] == "completed"):
+        raise ValueError(
+            "Automatic subtitles already exist for this project. Edit the "
+            "existing tracks or upload a replacement instead of using more tokens."
+        )
+    audio = s.DATA / "work" / (s.uid() + ".mp3")
+    try:
+        await save_upload(file, audio, 256 * 1024**2)
+        job_id = s.job(
+            "autosubtitle",
+            ident,
+            {
+                "language": language,
+                "translate": translate,
+                "audio_path": str(audio),
+                "offset": body.start,
+                "duration": clip_duration,
+            },
+        )
+    except BaseException:
+        audio.unlink(missing_ok=True)
+        raise
+    return {"job_id": job_id}
 
 
 @app.post("/api/projects/{ident}/assets/{kind}")
@@ -724,6 +1024,13 @@ async def cancel_job(ident: str):
                 "UPDATE projects SET status='cancelled' WHERE id=?",
                 (row["project_id"],),
             )
+        if row["kind"] == "autosubtitle" and row["status"] == "queued":
+            try:
+                audio = s.decrypt(row["payload"]).get("audio_path")
+            except Exception:
+                audio = None
+            if audio:
+                Path(audio).unlink(missing_ok=True)
     return {"ok": True}
 
 
@@ -868,6 +1175,10 @@ def cover_frame_range(row, start=None, end=None, edit=None):
 @app.post("/api/projects/{ident}/cover-frames")
 async def project_cover_frames(ident: str, body: CoverFrameCandidates):
     row = project(ident)
+    if json.loads(row["metadata"]).get("local"):
+        raise ValueError(
+            "Cover frames are extracted from the local file in the browser."
+        )
     edit, begin, finish = cover_frame_range(row, body.start, body.end, body.edit)
     for old in (s.DATA / "renders").glob(f"{ident}-frame-*.jpg"):
         old.unlink(missing_ok=True)
@@ -913,9 +1224,18 @@ async def select_project_cover_frame(ident: str, body: CoverFrameSelection):
         raise ValueError("Choose a cover frame inside the current clip.")
     revision = s.uid()
     path = s.DATA / "renders" / f"{ident}-cover-frame-{revision}.jpg"
-    await media.make_project_frame(
-        row, edit, body.time, path, max_edge=1280, quality=6
-    )
+    if json.loads(row["metadata"]).get("local"):
+        if not body.image:
+            raise ValueError(
+                "Send the clean frame extracted by the browser as a JPEG."
+            )
+        raw = decode_jpeg_data_url(body.image, 3 * 1024**2)
+        s.space_for(len(raw))
+        path.write_bytes(raw)
+    else:
+        await media.make_project_frame(
+            row, edit, body.time, path, max_edge=1280, quality=6
+        )
     info["cover_frame"] = {
         "time": round(body.time, 3),
         "revision": revision,
@@ -1338,6 +1658,16 @@ async def telegram_disconnect():
     return {"connected": False, "configured": True}
 
 
+@app.get("/api/fonts/file")
+async def resolved_font_file(family: str, bold: bool = False):
+    if family not in set(get_args(FontFamily)):
+        raise HTTPException(404, "Font not found.")
+    path = await font_path(family, bold)
+    if not path or not Path(path).is_file():
+        raise HTTPException(404, "Font not found.")
+    return FileResponse(path, media_type="font/ttf")
+
+
 @app.get("/api/fonts/{font}")
 async def font_file(font: str):
     if font not in FONT_SLUGS:
@@ -1348,6 +1678,13 @@ async def font_file(font: str):
 static = Path(os.getenv("STATIC_DIR", "/app/static"))
 if static.exists():
     app.mount("/assets", StaticFiles(directory=static / "assets"), name="static-assets")
+    ffmpeg_static = static / "ffmpeg"
+    if ffmpeg_static.exists():
+        app.mount(
+            "/ffmpeg",
+            StaticFiles(directory=ffmpeg_static),
+            name="ffmpeg-core",
+        )
 
     @app.get("/{path:path}")
     async def frontend(path: str):

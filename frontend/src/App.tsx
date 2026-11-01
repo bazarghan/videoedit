@@ -11,6 +11,7 @@ import {
   Upload,
   Link,
   Youtube,
+  Monitor,
   Play,
   Download,
   Send,
@@ -40,6 +41,7 @@ import Editor from "./Editor";
 import SettingsPage from "./Settings";
 import DownloadProxyFields from "./DownloadProxy";
 import TelegramPostPage from "./TelegramPostPage";
+import { probeLocalFile, projectThumbnail } from "./lib/ffmpegEngine";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
 
@@ -94,6 +96,8 @@ export default function App() {
     [proxyBusy, setProxyBusy] = useState(false);
   const [postClip, setPostClip] = useState<Clip | null>(null);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [localFiles, setLocalFiles] = useState<Record<string, File>>({});
+  const [localStatus, setLocalStatus] = useState("");
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
   useEffect(() => {
     if (page === "settings") setSettingsMenuOpen(true);
@@ -236,6 +240,51 @@ export default function App() {
       setError("بارگذاری قطع شد. دوباره تلاش کنید.");
     };
     xhr.send(form);
+  }
+  async function importBrowser(file: File) {
+    setBusy(true);
+    setProgress(5);
+    setLocalStatus("در حال آماده‌سازی موتور رندر مرورگر…");
+    try {
+      const metadata = await probeLocalFile(file);
+      setProgress(55);
+      setLocalStatus("در حال ساخت پیش‌نمایش پروژه…");
+      let thumbnail = "";
+      let thumbnailFailed = false;
+      try {
+        thumbnail = await projectThumbnail(file, metadata);
+      } catch {
+        // A thumbnail is cosmetic; a codec the wasm build cannot decode must
+        // not stop the user from creating the project and rendering later.
+        thumbnailFailed = true;
+      }
+      setProgress(80);
+      setLocalStatus("در حال ساخت پروژه…");
+      const result = await api<{ project_id: string }>(
+        "/import/local",
+        json("POST", {
+          name: name.trim() || file.name.replace(/\.[^.]+$/, "").slice(0, 120),
+          metadata,
+          thumbnail,
+        }),
+      );
+      setLocalFiles((old) => ({ ...old, [result.project_id]: file }));
+      setUrl("");
+      setName("");
+      openEditor(result.project_id);
+      toast(
+        thumbnailFailed
+          ? "پروژه ساخته شد، اما این کدک در موتور رندر مرورگر خوانده نشد. رندر ممکن است ناموفق باشد."
+          : "پروژه در حالت مرورگر ساخته شد. فایل اصلی از دستگاه شما خارج نمی‌شود.",
+      );
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      setProgress(0);
+      setLocalStatus("");
+    }
   }
   function showClip(clip: Clip) {
     setOpenClip(clip);
@@ -498,11 +547,17 @@ export default function App() {
                           onClick={() => {
                             if (
                               confirm("این پروژه و همه رسانه‌هایش حذف شوند؟")
-                            )
+                            ) {
+                              setLocalFiles((old) => {
+                                const next = { ...old };
+                                delete next[p.id];
+                                return next;
+                              });
                               action(
                                 () => api(`/projects/${p.id}`, json("DELETE")),
                                 "پروژه حذف شد.",
                               );
+                            }
                           }}
                         >
                           <Trash2 size={15} />
@@ -520,6 +575,10 @@ export default function App() {
             id={selected}
             jobs={jobs}
             clips={clips}
+            localFile={localFiles[selected]}
+            onLocalFile={(file) =>
+              setLocalFiles((old) => ({ ...old, [selected]: file }))
+            }
             autoSubtitleLimitMinutes={
               settings?.elevenlabs.max_duration_minutes ?? 6
             }
@@ -848,8 +907,14 @@ export default function App() {
               >
                 <Upload size={15} /> بارگذاری فایل
               </button>
+              <button
+                className={tab === "browser" ? "active" : ""}
+                onClick={() => setTab("browser")}
+              >
+                <Monitor size={15} /> رندر در مرورگر
+              </button>
             </div>
-            {tab !== "upload" ? (
+            {tab !== "upload" && tab !== "browser" ? (
               <form onSubmit={importURL}>
                 <label>
                   {tab === "youtube"
@@ -909,7 +974,7 @@ export default function App() {
                       : "دانلود و ساخت پروژه"}
                 </button>
               </form>
-            ) : (
+            ) : tab === "upload" ? (
               <label
                 className="dropzone"
                 onDragOver={(e) => e.preventDefault()}
@@ -939,6 +1004,47 @@ export default function App() {
                   disabled={busy}
                   onChange={(e) => {
                     if (e.target.files?.[0]) upload(e.target.files[0]);
+                  }}
+                />
+                {busy && (
+                  <div className="meter">
+                    <i style={{ width: `${progress}%` }} />
+                  </div>
+                )}
+              </label>
+            ) : (
+              <label
+                className="dropzone"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!busy && e.dataTransfer.files[0])
+                    importBrowser(e.dataTransfer.files[0]);
+                }}
+              >
+                <Monitor size={30} />
+                <strong>
+                  {busy
+                    ? localStatus || "در حال آماده‌سازی…"
+                    : "ویدیو را در مرورگر باز کنید"}
+                </strong>
+                <span>
+                  {busy
+                    ? "فایل شما آپلود نمی‌شود؛ فقط موتور رندر آماده می‌شود"
+                    : "یا برای انتخاب فایل کلیک کنید"}
+                </span>
+                <small>
+                  فایل اصلی از دستگاه شما خارج نمی‌شود · فقط کلیپ رندرشده
+                  آپلود می‌شود
+                </small>
+                <input
+                  type="file"
+                  accept="video/*,.mkv"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const chosen = e.target.files?.[0];
+                    e.target.value = "";
+                    if (chosen) importBrowser(chosen);
                   }}
                 />
                 {busy && (

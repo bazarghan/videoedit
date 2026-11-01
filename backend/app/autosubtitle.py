@@ -350,7 +350,11 @@ def _write_track(work, cues, name):
 
 async def run(project, payload, ident):
     source = project.get("source")
-    if not source or not Path(source).exists():
+    uploaded_audio = payload.get("audio_path")
+    if uploaded_audio:
+        if not Path(uploaded_audio).exists():
+            raise ValueError("The uploaded audio for transcription is missing.")
+    elif not source or not Path(source).exists():
         raise ValueError("The original video is not available for transcription.")
     elevenlabs = s.setting("elevenlabs", {})
     if not (elevenlabs.get("api_key") or "").strip():
@@ -361,40 +365,44 @@ async def run(project, payload, ident):
         raise ValueError("Add your 9Router API token in Settings first.")
 
     meta = json.loads(project["metadata"])
-    duration = float(meta.get("duration") or 0)
+    duration = float(payload.get("duration") or meta.get("duration") or 0)
+    offset = float(payload.get("offset") or 0)
     limit = max_duration_minutes(elevenlabs)
     if duration > limit * 60 + 0.5:
         raise ValueError(
-            f"This video is {duration / 60:.1f} minutes long. Automatic "
+            f"This clip is {duration / 60:.1f} minutes long. Automatic "
             f"subtitles are limited to {limit} minutes; raise the limit in "
             "Settings → Auto subtitles or import a shorter video."
         )
     work = s.DATA / "work" / (ident + "-autosubtitle")
     work.mkdir(parents=True, exist_ok=True)
     try:
-        audio = work / "audio.mp3"
-        await media.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-v",
-                "error",
-                "-y",
-                "-i",
-                str(source),
-                "-vn",
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                "-c:a",
-                "libmp3lame",
-                "-b:a",
-                "64k",
-                str(audio),
-            ],
-            ident,
-        )
+        if uploaded_audio:
+            audio = Path(uploaded_audio)
+        else:
+            audio = work / "audio.mp3"
+            await media.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(source),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "64k",
+                    str(audio),
+                ],
+                ident,
+            )
         s.update_job(ident, progress=12)
         transcript = await transcribe_audio(
             audio, elevenlabs, payload.get("language", "en"), ident
@@ -406,6 +414,15 @@ async def run(project, payload, ident):
         persian = await translate_cues(english, ai, ident) if translate else []
         if ident and media.cancelled(ident):
             raise media.Cancelled()
+        if offset:
+            # The browser only uploads the selected clip's audio. Shift the
+            # cues back into source time so subtitle trimming keeps working.
+            for cue in english:
+                cue["start"] += offset
+                cue["end"] += offset
+            for cue in persian:
+                cue["start"] += offset
+                cue["end"] += offset
 
         main_path = _write_track(work, english, "english.srt")
         fa_path = _write_track(work, persian, "persian.srt") if persian else None
@@ -451,4 +468,6 @@ async def run(project, payload, ident):
             "cues": len(english),
         }
     finally:
+        if uploaded_audio:
+            Path(uploaded_audio).unlink(missing_ok=True)
         shutil.rmtree(work, ignore_errors=True)

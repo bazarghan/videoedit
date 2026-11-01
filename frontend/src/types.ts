@@ -86,6 +86,14 @@ export type Metadata = {
   height: number;
   size: number;
   video_codec: string;
+  video_codec_tag?: string | null;
+  pixel_format?: string | null;
+  browser_container?: string | null;
+  video_duration?: number;
+  format?: string;
+  fps?: number;
+  /** True when the source stayed in the browser and only renders are stored. */
+  local?: boolean;
   telegram_compatible?: boolean;
   cover?: {
     time: number;

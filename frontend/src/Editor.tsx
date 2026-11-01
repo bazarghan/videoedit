@@ -51,6 +51,17 @@ import {
 } from "./types";
 import WatermarkTemplateEditor from "./WatermarkTemplate";
 import { templateFromLegacy, watermarkVisibleAt } from "./watermark";
+import {
+  cleanCoverFrame,
+  coverCandidates as extractCoverCandidates,
+  engineThreads,
+  extractClipAudio,
+  renderLocalClip,
+  type LocalMetadata,
+  type RenderPlan,
+  type RenderProgress,
+  terminateEngine,
+} from "./lib/ffmpegEngine";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { Input } from "./components/ui/input";
@@ -186,6 +197,8 @@ type Props = {
   id: string;
   jobs: Job[];
   clips: Clip[];
+  localFile?: File;
+  onLocalFile: (file: File) => void;
   autoSubtitleLimitMinutes?: number;
   onError: (s: string) => void;
   toast: (s: string) => void;
@@ -196,6 +209,8 @@ export default function Editor({
   id,
   jobs,
   clips,
+  localFile,
+  onLocalFile,
   autoSubtitleLimitMinutes = 6,
   onError,
   toast,
@@ -252,6 +267,32 @@ export default function Editor({
   const cancelCueEditRef = useRef(false);
   const inlineEditorRef = useRef<HTMLSpanElement>(null);
   const duration = project?.metadata.duration || 0;
+  const local = !!project?.metadata.local;
+  const localReady = local && !!localFile;
+  const canRender = local ? localReady : !!project?.has_source;
+  const [localRender, setLocalRender] = useState<RenderProgress | null>(null);
+  const localAbort = useRef<AbortController | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
+  useEffect(() => {
+    if (!localFile) {
+      setSourceUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(localFile);
+    setSourceUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setSourceUrl("");
+    };
+  }, [localFile]);
+  useEffect(() => {
+    return () => {
+      if (localAbort.current) {
+        localAbort.current.abort();
+        terminateEngine();
+      }
+    };
+  }, [id]);
   const rangeStart = refine ? refine.start : 0;
   const rangeEnd = refine ? refine.end : duration;
   const rangeSpan = Math.max(MIN_CLIP, rangeEnd - rangeStart);
@@ -308,7 +349,10 @@ export default function Editor({
     !!project?.subtitles?.some((track) => track.origin === "auto") &&
     (!lastAutoSubtitleJob ||
       !["failed", "cancelled"].includes(lastAutoSubtitleJob.status));
-  const autoSubtitleTooLong = duration > autoSubtitleLimitMinutes * 60 + 0.5;
+  const autoSubtitleSpan =
+    local && edit ? Math.max(0, edit.end - edit.start) : duration;
+  const autoSubtitleTooLong =
+    autoSubtitleSpan > autoSubtitleLimitMinutes * 60 + 0.5;
   const activeRender = jobs.find(
     (j) =>
       j.project_id === id &&
@@ -323,14 +367,16 @@ export default function Editor({
     !!edit &&
     (coverFrame.time < edit.start || coverFrame.time >= edit.end);
   const autoSubtitleBlocked =
-    !project?.has_source || autoSubtitlesReady || autoSubtitleTooLong;
-  const autoSubtitleTitle = autoSubtitlesReady
-    ? "زیرنویس خودکار برای این ویدیو ساخته شده است. به‌جای مصرف توکن بیشتر، آن‌ها را ویرایش کنید."
-    : autoSubtitleTooLong
-      ? `زیرنویس خودکار تا ${autoSubtitleLimitMinutes} دقیقه محدود است. سقف را در تنظیمات → زیرنویس خودکار افزایش دهید.`
-      : "پیاده‌سازی گفتار با ElevenLabs، ترجمه با 9Router و افزودن زیرنویس انگلیسی + فارسی";
+    !canRender || autoSubtitlesReady || autoSubtitleTooLong;
+  const autoSubtitleTitle = local
+    ? "زیرنویس خودکار در مرورگر فقط صدای بازه انتخاب‌شده را (به‌صورت یک فایل MP3 کوچک) آپلود می‌کند."
+    : autoSubtitlesReady
+      ? "زیرنویس خودکار برای این ویدیو ساخته شده است. به‌جای مصرف توکن بیشتر، آن‌ها را ویرایش کنید."
+      : autoSubtitleTooLong
+        ? `زیرنویس خودکار تا ${autoSubtitleLimitMinutes} دقیقه محدود است. سقف را در تنظیمات → زیرنویس خودکار افزایش دهید.`
+        : "پیاده‌سازی گفتار با ElevenLabs، ترجمه با 9Router و افزودن زیرنویس انگلیسی + فارسی";
   const complete = !!project?.metadata.duration;
-  const playbackReady = !!project?.has_source && complete;
+  const playbackReady = canRender && complete;
   async function saveAsDefaults(section: "subtitles" | "watermark") {
     if (!edit) return;
     setSavingDefaults(true);
@@ -797,6 +843,44 @@ export default function Editor({
     }
   }
   async function autoSubtitles() {
+    if (!edit) return;
+    if (local) {
+      if (!localFile) {
+        onError("برای زیرنویس خودکار، فایل محلی را دوباره وصل کنید.");
+        return;
+      }
+      setBusy(true);
+      setAutoStarting(true);
+      try {
+        const audio = await extractClipAudio(
+          localFile,
+          edit.start,
+          edit.end - edit.start,
+        );
+        const form = new FormData();
+        form.append(
+          "file",
+          new Blob([audio as unknown as BlobPart], { type: "audio/mpeg" }),
+          "audio.mp3",
+        );
+        form.append("edit", JSON.stringify(edit));
+        form.append("language", "en");
+        form.append("translate", "true");
+        await api(`/projects/${id}/autosubtitle-local`, {
+          method: "POST",
+          body: form,
+        });
+        toast(
+          "زیرنویس خودکار در صف قرار گرفت. فقط صدای بازه انتخاب‌شده آپلود شد؛ ElevenLabs آن را پیاده‌سازی و 9Router ترجمه می‌کند.",
+        );
+      } catch (e) {
+        setAutoStarting(false);
+        onError((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     setAutoStarting(true);
     try {
@@ -816,6 +900,44 @@ export default function Editor({
   }
   async function render(preview: boolean) {
     if (!edit) return;
+    if (local) {
+      if (!localFile || !project) return;
+      setBusy(true);
+      setLocalRender({ phase: "preparing", progress: 0 });
+      const controller = new AbortController();
+      localAbort.current = controller;
+      try {
+        const plan = await api<RenderPlan>(
+          `/projects/${id}/render-plan?preview=${preview}&threads=${engineThreads()}`,
+          json("POST", edit),
+        );
+        const clip = await renderLocalClip({
+          projectId: id,
+          file: localFile,
+          plan,
+          edit,
+          onProgress: setLocalRender,
+          signal: controller.signal,
+        });
+        setProject(await api<Project>(`/projects/${id}`));
+        setSavedEditKey(stableKey(edit));
+        setSaved(true);
+        toast(
+          preview
+            ? "پیش‌نمایش شش‌ثانیه‌ای در مرورگر رندر و ذخیره شد."
+            : "کلیپ در مرورگر رندر و روی سرور ذخیره شد.",
+        );
+        if (clip) onClip(clip);
+      } catch (e) {
+        if (controller.signal.aborted) toast("رندر مرورگر لغو شد.");
+        else onError((e as Error).message);
+      } finally {
+        localAbort.current = null;
+        setBusy(false);
+        setLocalRender(null);
+      }
+      return;
+    }
     setBusy(true);
     try {
       await api(
@@ -833,8 +955,41 @@ export default function Editor({
       setBusy(false);
     }
   }
+  function cancelLocalRender() {
+    localAbort.current?.abort();
+    terminateEngine();
+    setLocalRender(null);
+  }
   async function generateCoverFrames() {
     if (!edit) return;
+    if (local) {
+      if (!localFile) {
+        onError("برای ساخت کاور، فایل محلی را دوباره وصل کنید.");
+        return;
+      }
+      setCoverBusy(true);
+      try {
+        const span = edit.end - edit.start;
+        const times = Array.from(
+          { length: 6 },
+          (_, index) => edit.start + (span * (index + 1)) / 7,
+        );
+        setCoverCandidates(
+          await extractCoverCandidates(
+            localFile,
+            times,
+            project.metadata as LocalMetadata,
+            edit,
+          ),
+        );
+        toast("شش فریم تمیز کاور تلگرام در مرورگر ساخته شد.");
+      } catch (e) {
+        onError((e as Error).message);
+      } finally {
+        setCoverBusy(false);
+      }
+      return;
+    }
     setCoverBusy(true);
     try {
       const result = await api<{ frames: CoverCandidate[] }>(
@@ -858,6 +1013,19 @@ export default function Editor({
     if (!edit) return;
     setCoverBusy(true);
     try {
+      let image: string | undefined;
+      if (local) {
+        if (!localFile) {
+          onError("برای انتخاب کاور، فایل محلی را دوباره وصل کنید.");
+          return;
+        }
+        image = await cleanCoverFrame(
+          localFile,
+          value,
+          project.metadata as LocalMetadata,
+          edit,
+        );
+      }
       await api(
         `/projects/${id}/cover-frame`,
         json("PUT", {
@@ -865,6 +1033,7 @@ export default function Editor({
           start: edit.start,
           end: edit.end,
           edit,
+          ...(image ? { image } : {}),
         }),
       );
       setProject(await api<Project>(`/projects/${id}`));
@@ -1417,7 +1586,7 @@ export default function Editor({
           </button>
           <button
             className="secondary"
-            disabled={busy || !project.has_source || !!activeRender}
+            disabled={busy || !canRender || !!activeRender || !!localRender}
             onClick={() => render(true)}
             title={
               activeRender
@@ -1432,8 +1601,9 @@ export default function Editor({
             disabled={
               busy ||
               edit.end <= edit.start ||
-              !project.has_source ||
+              !canRender ||
               !!activeRender ||
+              !!localRender ||
               renderedCurrent
             }
             onClick={() => render(false)}
@@ -1448,6 +1618,30 @@ export default function Editor({
             {renderedCurrent ? <CheckIcon size={16} /> : <Download size={16} />}{" "}
             {renderedCurrent ? "قبلاً رندر شده" : "رندر کلیپ"}
           </button>
+          {localRender && (
+            <div className="local-render-status" role="status">
+              <LoaderCircle className="spin" size={15} />
+              <span>
+                {localRender.phase === "preparing"
+                  ? "آماده‌سازی موتور رندر"
+                  : localRender.phase === "rendering"
+                    ? "رندر در مرورگر"
+                    : "آپلود کلیپ"}{" "}
+                · {(localRender.progress * 100).toFixed(0)}%
+              </span>
+              <div className="meter">
+                <i style={{ width: `${localRender.progress * 100}%` }} />
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="لغو رندر مرورگر"
+                onClick={cancelLocalRender}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1470,7 +1664,7 @@ export default function Editor({
                   <video
                     ref={video}
                     key={project.id}
-                    src={`/api/media/project/${id}/source`}
+                    src={local ? sourceUrl : `/api/media/project/${id}/source`}
                     style={{
                       objectFit: edit.crop.mode === "fit" ? "contain" : "cover",
                       objectPosition: `${edit.crop.x * 100}% ${edit.crop.y * 100}%`,
@@ -1513,6 +1707,36 @@ export default function Editor({
                     onPause={() => setPlaying(false)}
                     onEnded={() => setPlaying(false)}
                   />
+                ) : local && !localFile ? (
+                  <div className="preview-pending">
+                    <Upload size={30} />
+                    <strong>فایل محلی را دوباره وصل کنید</strong>
+                    <span>
+                      برای حفظ حریم خصوصی، فایل اصلی روی سرور ذخیره نمی‌شود.
+                      همان فایل را انتخاب کنید تا پخش و رندر ادامه پیدا کند.
+                    </span>
+                    <label className="secondary local-file-button">
+                      انتخاب فایل
+                      <input
+                        type="file"
+                        accept="video/*,.mkv"
+                        onChange={(e) => {
+                          const chosen = e.target.files?.[0];
+                          if (!chosen) return;
+                          if (
+                            project.metadata.size &&
+                            chosen.size !== project.metadata.size
+                          ) {
+                            onError(
+                              "این فایل با اندازه فایل اصلی این پروژه مطابقت ندارد.",
+                            );
+                            return;
+                          }
+                          onLocalFile(chosen);
+                        }}
+                      />
+                    </label>
+                  </div>
                 ) : (
                   <div className="preview-pending">
                     {active.length > 0 && (
@@ -2133,7 +2357,8 @@ export default function Editor({
                         </p>
                         {autoSubtitleTooLong && (
                           <p className="inline-error">
-                            این ویدیو {clock(duration)} است. زیرنویس خودکار تا{" "}
+                            {local ? "این بازه" : "این ویدیو"}{" "}
+                            {clock(autoSubtitleSpan)} است. زیرنویس خودکار تا{" "}
                             {autoSubtitleLimitMinutes} دقیقه محدود است؛ سقف را
                             در تنظیمات → زیرنویس خودکار افزایش دهید.
                           </p>
