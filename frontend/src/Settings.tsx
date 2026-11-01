@@ -338,6 +338,17 @@ export default function SettingsPage({
                     <span className="badge success">متصل</span>
                   </div>
                 )}
+                {connected && (
+                  <div className="note">
+                    <Send size={16} />
+                    <span>
+                      برای گرفتن شناسه چت (Chat ID)، در چت خصوصی ربات یا در
+                      گروهی که ربات عضو آن است دستور <b dir="ltr">/chatid</b>{" "}
+                      را بفرستید. سپس در صفحه ارسال، «ارسال به کانال» را خاموش
+                      کنید و همان شناسه را وارد کنید.
+                    </span>
+                  </div>
+                )}
                 {!connected && settings.telegram_status.error && (
                   <p role="alert" className="inline-error">
                     {settings.telegram_status.error}

@@ -22,6 +22,7 @@ import {
 } from "./components/ui/select";
 import { Stepper } from "./components/ui/stepper";
 import { Switch } from "./components/ui/switch";
+import { Input } from "./components/ui/input";
 import { TelegramEditorModal, TelegramRichText } from "./telegram-editor";
 import TelegramCover from "./TelegramCover";
 import { api, clock, json, size, Clip, Job, Settings } from "./types";
@@ -169,6 +170,8 @@ export default function TelegramPostPage({
   const [destination, setDestination] = useState(
     settings?.telegram.default_channel || channels[0]?.id || "",
   );
+  const [sendToChannel, setSendToChannel] = useState(true);
+  const [chatId, setChatId] = useState("");
   const [caption, setCaption] = useState("");
   const [captionFormat, setCaptionFormat] = useState("html");
   const [captionOpen, setCaptionOpen] = useState(false);
@@ -181,6 +184,11 @@ export default function TelegramPostPage({
 
   const channel =
     channels.find((item) => item.id === destination) ?? channels[0] ?? null;
+  const manualChatId = chatId.trim();
+  const chatIdValid =
+    /^-?\d+$/.test(manualChatId) ||
+    /^@?[A-Za-z][A-Za-z0-9_]{3,}$/.test(manualChatId);
+  const destinationReady = sendToChannel ? Boolean(channel) : chatIdValid;
   const coverPending = clip
     ? jobs.some(
         (job) =>
@@ -203,6 +211,8 @@ export default function TelegramPostPage({
     setCaption("");
     setCaptionFormat("html");
     setAsFile(false);
+    setSendToChannel(true);
+    setChatId("");
     setError("");
     setJobId(null);
     if (clearClip) onSelectClip(null);
@@ -233,14 +243,15 @@ export default function TelegramPostPage({
   }
 
   async function send() {
-    if (!clip || !channel || submitting) return;
+    if (!clip || !destinationReady || submitting) return;
     setSubmitting(true);
     setError("");
     try {
       const result = await api<{ job_id: string }>(
         `/clips/${clip.id}/send`,
         json("POST", {
-          destination: channel.id,
+          destination: sendToChannel ? (channel?.id ?? "") : "",
+          chat_id: sendToChannel ? "" : manualChatId,
           caption,
           as_file: asFile,
         }),
@@ -248,7 +259,9 @@ export default function TelegramPostPage({
       setJobId(result.job_id);
       setStep("success");
       toast(
-        "ارسال به Telegram در صف قرار گرفت. آن را در فعالیت‌ها پیگیری کنید.",
+        sendToChannel
+          ? "ارسال به Telegram در صف قرار گرفت. آن را در فعالیت‌ها پیگیری کنید."
+          : "ارسال تستی در صف قرار گرفت. آن را در فعالیت‌ها پیگیری کنید.",
       );
       await refresh().catch(() => {});
     } catch (caught) {
@@ -308,19 +321,17 @@ export default function TelegramPostPage({
     );
   }
 
-  if (!settings.telegram_status.connected || !channels.length) {
+  if (!settings.telegram_status.connected) {
     return (
       <div className="page">
         <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-5">
           {header}
           <StepCard
             title="اتصال تلگرام"
-            description="برای ارسال پست، ابتدا ربات و کانال مقصد را در تنظیمات آماده کنید."
+            description="برای ارسال پست، ابتدا ربات را در تنظیمات آماده کنید."
           >
             <p className="text-sm text-text-secondary">
-              {!settings.telegram_status.connected
-                ? "ربات تلگرام هنوز متصل نیست. اطلاعات ربات را در تنظیمات وارد کنید."
-                : "هنوز کانالی ثبت نشده است. یک کانال اضافه کنید و مطمئن شوید ربات در آنجا مدیر است."}
+              ربات تلگرام هنوز متصل نیست. اطلاعات ربات را در تنظیمات وارد کنید.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" onClick={onSettings}>
@@ -553,25 +564,100 @@ export default function TelegramPostPage({
             title="تنظیمات انتشار"
             description="مقصد و شکل ارسال پست را انتخاب کنید."
           >
-            <label className="flex flex-col gap-1.5 text-sm text-text-primary">
-              کانال مقصد
-              <Select
-                value={channel?.id ?? ""}
-                onValueChange={(value) => setDestination(value)}
-              >
-                <SelectTrigger aria-label="کانال مقصد">
-                  <SelectValue placeholder="یک کانال انتخاب کنید" />
-                </SelectTrigger>
-                <SelectContent>
-                  {channels.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                      {item.username ? ` (@${item.username})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <label
+              htmlFor="send-to-channel"
+              className="flex cursor-pointer items-start justify-between gap-4 rounded-[8px] border border-border-tertiary bg-elevation-2 p-4"
+            >
+              <span className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-text-primary">
+                  ارسال به کانال
+                </span>
+                <span className="text-sm text-text-secondary">
+                  برای ارسال تستی، این گزینه را خاموش کنید و شناسه چت مقصد را
+                  دستی وارد کنید.
+                </span>
+              </span>
+              <Switch
+                id="send-to-channel"
+                checked={sendToChannel}
+                onCheckedChange={setSendToChannel}
+                aria-label="ارسال به کانال"
+                className="mt-0.5"
+              />
             </label>
+
+            {sendToChannel ? (
+              channels.length ? (
+                <label className="flex flex-col gap-1.5 text-sm text-text-primary">
+                  کانال مقصد
+                  <Select
+                    value={channel?.id ?? ""}
+                    onValueChange={(value) => setDestination(value)}
+                  >
+                    <SelectTrigger aria-label="کانال مقصد">
+                      <SelectValue placeholder="یک کانال انتخاب کنید" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {channels.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                          {item.username ? ` (@${item.username})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  هنوز کانالی ثبت نشده است. یک کانال در تنظیمات اضافه کنید یا
+                  «ارسال به کانال» را خاموش کنید و شناسه چت را وارد کنید.
+                </p>
+              )
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="test-chat-id"
+                  className="text-sm text-text-primary"
+                >
+                  شناسه چت مقصد (Chat ID)
+                </label>
+                <Input
+                  id="test-chat-id"
+                  dir="ltr"
+                  value={chatId}
+                  onChange={(event) => setChatId(event.target.value)}
+                  placeholder="-1001234567890"
+                  aria-invalid={manualChatId ? !chatIdValid : undefined}
+                  aria-describedby="test-chat-id-hint"
+                />
+                <p
+                  id="test-chat-id-hint"
+                  className="text-sm text-text-secondary"
+                >
+                  برای گرفتن شناسه، در چت خصوصی ربات
+                  {settings.telegram_status.username
+                    ? ` (@${settings.telegram_status.username})`
+                    : ""}{" "}
+                  یا در گروهی که ربات عضو آن است دستور{" "}
+                  <span dir="ltr" className="font-mono">
+                    /chatid
+                  </span>{" "}
+                  را بفرستید. ربات باید به آن چت دسترسی داشته باشد.
+                </p>
+                {manualChatId && !chatIdValid ? (
+                  <p className="text-sm text-destructive">
+                    شناسه چت باید عددی باشد؛ مانند -1001234567890. می‌توانید نام
+                    کاربری عمومی را هم با @ وارد کنید.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {sendToChannel && channel?.error ? (
+              <p className="text-sm text-destructive">
+                وضعیت این کانال: {channel.error}
+              </p>
+            ) : null}
 
             <label
               htmlFor="send-as-file"
@@ -582,8 +668,7 @@ export default function TelegramPostPage({
                   ارسال به‌صورت فایل
                 </span>
                 <span className="text-sm text-text-secondary">
-                  ویدیو به‌جای ویدیوی قابل پخش، به‌صورت سند در کانال ارسال
-                  می‌شود.
+                  ویدیو به‌جای ویدیوی قابل پخش، به‌صورت سند ارسال می‌شود.
                 </span>
               </span>
               <Switch
@@ -594,12 +679,6 @@ export default function TelegramPostPage({
                 className="mt-0.5"
               />
             </label>
-
-            {channel?.error ? (
-              <p className="text-sm text-destructive">
-                وضعیت این کانال: {channel.error}
-              </p>
-            ) : null}
             <p className="text-sm text-text-secondary">
               ویدیوها از طریق MTProto و با ربات شما آپلود می‌شوند، تا ۲
               گیگابایت.
@@ -612,7 +691,7 @@ export default function TelegramPostPage({
               <Button
                 type="button"
                 onClick={() => goTo("review")}
-                disabled={!channel}
+                disabled={!destinationReady}
               >
                 بازبینی نهایی
               </Button>
@@ -635,7 +714,7 @@ export default function TelegramPostPage({
                   پیش‌نمایش کپشن
                 </h2>
                 <p className="text-sm text-text-secondary">
-                  این متن همراه ویدیو در کانال منتشر می‌شود.
+                  این متن همراه ویدیو ارسال می‌شود.
                 </p>
               </div>
               <div
@@ -667,11 +746,19 @@ export default function TelegramPostPage({
                   value={<span className="truncate">{clip.name}</span>}
                 />
                 <SummaryRow
-                  label="کانال"
+                  label={sendToChannel ? "کانال" : "چت مقصد"}
                   value={
-                    channel
-                      ? `${channel.name}${channel.username ? ` (@${channel.username})` : ""}`
-                      : "انتخاب نشده"
+                    sendToChannel ? (
+                      channel ? (
+                        `${channel.name}${channel.username ? ` (@${channel.username})` : ""}`
+                      ) : (
+                        "انتخاب نشده"
+                      )
+                    ) : manualChatId ? (
+                      <span dir="ltr">{manualChatId}</span>
+                    ) : (
+                      "وارد نشده"
+                    )
                   }
                 />
                 <SummaryRow
@@ -709,7 +796,7 @@ export default function TelegramPostPage({
                 <Button
                   type="button"
                   onClick={() => void send()}
-                  disabled={submitting || coverPending || !channel}
+                  disabled={submitting || coverPending || !destinationReady}
                 >
                   {submitting ? <LoaderCircle className="spin" /> : <Send />}
                   {submitting ? "در حال ثبت…" : "همین حالا ارسال کنید"}
@@ -737,12 +824,27 @@ export default function TelegramPostPage({
                     ارسال در صف قرار گرفت
                   </h2>
                   <p className="text-sm text-text-secondary">
-                    پست برای کانال{" "}
-                    <strong className="font-medium text-text-primary">
-                      {channel?.name}
-                    </strong>{" "}
-                    در صف ارسال قرار گرفت. پیشرفت را در بخش فعالیت‌ها دنبال
-                    کنید.
+                    {sendToChannel ? (
+                      <>
+                        پست برای کانال{" "}
+                        <strong className="font-medium text-text-primary">
+                          {channel?.name}
+                        </strong>{" "}
+                        در صف ارسال قرار گرفت.
+                      </>
+                    ) : (
+                      <>
+                        ارسال تستی به چت{" "}
+                        <strong
+                          className="font-medium text-text-primary"
+                          dir="ltr"
+                        >
+                          {manualChatId}
+                        </strong>{" "}
+                        در صف قرار گرفت.
+                      </>
+                    )}{" "}
+                    پیشرفت را در بخش فعالیت‌ها دنبال کنید.
                     {jobId ? (
                       <span className="mt-1 block text-xs text-text-tertiary">
                         شناسه کار: <span dir="ltr">{jobId}</span>

@@ -324,6 +324,9 @@ class TelegramChannel(Strict):
 
 class SendClip(Strict):
     destination: str = Field(default="", max_length=150)
+    # When set, the clip is delivered to this chat instead of a configured
+    # channel. Users obtain the numeric ID with the bot's /chatid command.
+    chat_id: str = Field(default="", max_length=150)
     caption: str = Field(default="", max_length=1024)
     as_file: bool = False
 

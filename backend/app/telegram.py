@@ -11,7 +11,7 @@ import re
 import time
 from pathlib import Path
 
-from telethon import TelegramClient, errors, functions, types, utils
+from telethon import TelegramClient, errors, events, functions, types, utils
 from telethon.sessions import StringSession
 
 from . import store as s
@@ -26,6 +26,8 @@ from .media import (
 
 BOT_FILE_LIMIT = 2 * 1024**3
 CHANNEL_ID = re.compile(r"-?\d+")
+CHAT_ID_COMMAND = r"(?i)^/chatid(?:@\w+)?(?:\s|$)"
+CHAT_TARGET = re.compile(r"-?\d+|@?[A-Za-z][A-Za-z0-9_]{3,}")
 
 
 def public_channel(channel):
@@ -42,6 +44,7 @@ class Telegram:
     def __init__(self):
         self.client = None
         self.client_key = None
+        self.handler_registered = False
         self.lock = asyncio.Lock()
 
     async def get(self):
@@ -69,12 +72,55 @@ class Telegram:
                     flood_sleep_threshold=0,
                 )
                 self.client_key = key
+                self.handler_registered = False
             if not self.client.is_connected():
                 await self.client.connect()
             if not await self.client.is_user_authorized():
                 await self.client.sign_in(bot_token=config["bot_token"])
                 await self.save_session()
+            if not self.handler_registered:
+                # The bot stays connected so /chatid works in private chats and
+                # groups; Telethon reconnects automatically after network drops.
+                self.client.add_event_handler(
+                    self.receive_chatid, events.NewMessage(pattern=CHAT_ID_COMMAND)
+                )
+                self.handler_registered = True
         return self.client
+
+    async def start(self):
+        """Connect the bot and start listening for /chatid commands."""
+        try:
+            await self.get()
+            return True
+        except Exception:
+            # Startup must not fail when Telegram is not configured or offline.
+            # The Settings page reports connection problems with a retry path.
+            return False
+
+    async def receive_chatid(self, event):
+        try:
+            chat = await event.get_chat()
+        except Exception:
+            chat = None
+        title = getattr(chat, "title", None)
+        if not title:
+            title = " ".join(
+                filter(
+                    None,
+                    [
+                        getattr(chat, "first_name", None),
+                        getattr(chat, "last_name", None),
+                    ],
+                )
+            )
+        lines = [f"Chat ID: {event.chat_id}"]
+        if title:
+            lines.insert(0, title)
+        lines.append(
+            "Use this ID as the test destination in VideoEdit. "
+            "The bot must be able to message this chat."
+        )
+        await event.reply("\n".join(lines))
 
     async def save_session(self):
         if self.client is not None:
@@ -155,7 +201,10 @@ class Telegram:
                 return await client.get_entity(channel_id)
             except ValueError:
                 async for dialog in client.iter_dialogs():
-                    if dialog.entity.id == channel_id:
+                    if (
+                        utils.get_peer_id(dialog.entity) == channel_id
+                        or getattr(dialog.entity, "id", None) == channel_id
+                    ):
                         return dialog.entity
                 raise ValueError(
                     "The bot cannot see this channel. Add the bot to the channel "
@@ -165,6 +214,33 @@ class Telegram:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,}", username):
             raise ValueError("Enter a public @username, t.me link or channel ID.")
         return await client.get_entity("@" + username)
+
+    async def _resolve_chat(self, value):
+        """Resolve a chat ID from /chatid, or a public @username.
+
+        Bot accounts only know chats they have seen. A numeric ID therefore
+        falls back to the bot's dialogs when Telethon has no cached entity yet.
+        """
+        client = await self.get()
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Enter the chat ID returned by the bot's /chatid command.")
+        if CHANNEL_ID.fullmatch(value.replace(" ", "")):
+            target = int(value.replace(" ", ""))
+            try:
+                return await client.get_entity(target)
+            except Exception:
+                async for dialog in client.iter_dialogs():
+                    if (
+                        utils.get_peer_id(dialog.entity) == target
+                        or getattr(dialog.entity, "id", None) == target
+                    ):
+                        return dialog.entity
+            raise ValueError(
+                "The bot cannot reach this chat. Send /chatid to the bot in a "
+                "private chat, or add the bot to the group, then retry."
+            ) from None
+        return await self._resolve(value)
 
     async def _require_admin(self, client, entity):
         if isinstance(entity, types.User):
@@ -287,17 +363,25 @@ class Telegram:
         clip = s.one("SELECT * FROM clips WHERE id=?", (payload["clip_id"],))
         if not clip:
             raise ValueError("The rendered clip was deleted.")
-        channel = self.channel(payload.get("destination", ""))
         path = Path(clip["path"])
         if path.stat().st_size >= BOT_FILE_LIMIT:
             raise ValueError("This clip exceeds the 2 GB Telegram bot upload limit.")
-        if channel.get("access_hash") is not None:
-            entity = types.InputPeerChannel(
-                channel_id=int(channel["id"]),
-                access_hash=int(channel["access_hash"]),
-            )
+        chat_id = (payload.get("chat_id") or "").strip()
+        if chat_id:
+            # Test deliveries go straight to the chat ID from /chatid and do
+            # not need a configured channel or administrator permissions.
+            entity = await self._resolve_chat(chat_id)
         else:
-            entity = await self._resolve(channel.get("username") or str(channel["id"]))
+            channel = self.channel(payload.get("destination", ""))
+            if channel.get("access_hash") is not None:
+                entity = types.InputPeerChannel(
+                    channel_id=int(channel["id"]),
+                    access_hash=int(channel["access_hash"]),
+                )
+            else:
+                entity = await self._resolve(
+                    channel.get("username") or str(channel["id"])
+                )
         started = time.monotonic()
 
         async def progress(sent, total):

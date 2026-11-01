@@ -127,7 +127,11 @@ def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
         def __init__(self, *args, **kwargs):
             self.authorized = False
             self.connected = False
+            self.event_handlers = []
             self.session = SimpleNamespace(save=lambda: "authorized-secret-session")
+
+        def add_event_handler(self, callback, event):
+            self.event_handlers.append((callback, event))
 
         def is_connected(self):
             return self.connected
@@ -155,8 +159,10 @@ def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
             if isinstance(value, types.InputPeerChannel):
                 assert value.channel_id == channel.id
                 assert value.access_hash == channel.access_hash
-            else:
-                assert value == "@testchannel"
+                return channel
+            if value == 555:
+                return SimpleNamespace(id=555, first_name="Test", last_name="User")
+            assert value == "@testchannel"
             return channel
 
         async def get_permissions(self, entity, user):
@@ -256,6 +262,7 @@ def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
         status = await tg.status()
         assert status["connected"] and status["username"] == "test_bot"
         assert calls == ["bot-sign-in"]
+        assert len(tg.client.event_handlers) == 1
         added = await tg.add_channel("@testchannel")
         assert added["id"] == str(channel.id) and not added["error"]
         assert (await tg.verify_channel(added["id"]))["name"] == "Test channel"
@@ -295,6 +302,13 @@ def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
             options["thumb"].endswith(".jpg")
             and Path(options["thumb"]).stat().st_size < 20 * 1024
         )
+        # A manual chat ID is a test delivery and ignores configured channels.
+        await tg.send(
+            {**payload, "destination": "", "chat_id": "555", "as_file": True},
+            ident,
+        )
+        target = calls[-1][1]
+        assert target.id == 555 and calls[-1][2] is True
         s.update_job(ident, status="cancelled")
         with pytest.raises(Cancelled):
             await tg.send(payload, ident)
@@ -312,6 +326,57 @@ def test_telegram_bot_channel_verification_and_upload(monkeypatch, tmp_path):
     for path in (s.DATA / "renders").glob(clip_id + "-*.jpg"):
         path.unlink(missing_ok=True)
     s.set_setting("telegram", {})
+
+
+def test_chatid_command_and_numeric_chat_resolution(monkeypatch):
+    replies = []
+
+    class Event:
+        def __init__(self, chat_id, chat):
+            self.chat_id = chat_id
+            self.chat = chat
+
+        async def get_chat(self):
+            return self.chat
+
+        async def reply(self, text):
+            replies.append(text)
+
+    tg = Telegram()
+    asyncio.run(
+        tg.receive_chatid(
+            Event(1234, SimpleNamespace(first_name="Test", last_name="User"))
+        )
+    )
+    asyncio.run(
+        tg.receive_chatid(
+            Event(
+                -1001234567890,
+                SimpleNamespace(title="Test Group", first_name=None, last_name=None),
+            )
+        )
+    )
+    assert "Test User" in replies[0] and "Chat ID: 1234" in replies[0]
+    assert "Test Group" in replies[1] and "Chat ID: -1001234567890" in replies[1]
+
+    channel = types.Channel(
+        id=1234567890,
+        access_hash=987654321,
+        title="Test Group",
+        photo=types.ChatPhotoEmpty(),
+        date=datetime.now(timezone.utc),
+    )
+
+    class Client:
+        async def get_entity(self, value):
+            raise ValueError("not cached")
+
+        async def iter_dialogs(self):
+            yield SimpleNamespace(entity=channel)
+
+    monkeypatch.setattr(tg, "get", AsyncMock(return_value=Client()))
+    resolved = asyncio.run(tg._resolve_chat("-1001234567890"))
+    assert resolved is channel
 
 
 def test_upload_admission_prevents_spool_exhaustion():

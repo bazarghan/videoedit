@@ -1185,25 +1185,12 @@ export default function App() {
                   </button>{" "}
                   متصل کنید.
                 </p>
-              ) : !settings.telegram.channels.length ? (
-                <p>
-                  یک کانال در{" "}
-                  <button
-                    className="text-link"
-                    onClick={() => {
-                      setOpenClip(null);
-                      setPage("settings");
-                    }}
-                  >
-                    تنظیمات
-                  </button>{" "}
-                  اضافه کنید و مطمئن شوید ربات در آنجا مدیر است.
-                </p>
               ) : (
                 <>
                   <p>
-                    کاور، کپشن و کانال مقصد را در صفحه ارسال پست تنظیم کنید و
-                    سپس ارسال را نهایی کنید.
+                    {settings.telegram.channels.length
+                      ? "کاور، کپشن و کانال مقصد را در صفحه ارسال پست تنظیم کنید و سپس ارسال را نهایی کنید."
+                      : "هنوز کانالی ثبت نشده است. می‌توانید برای تست، شناسه چت را وارد کنید و کلیپ را همان‌جا بفرستید یا ابتدا یک کانال در تنظیمات اضافه کنید."}
                   </p>
                   <div className="telegram-entry-actions">
                     <button
@@ -1213,7 +1200,9 @@ export default function App() {
                       <Send size={16} /> رفتن به صفحه ارسال پست
                     </button>
                     <span className="hint">
-                      {settings.telegram.channels.length} کانال متصل است.
+                      {settings.telegram.channels.length
+                        ? `${settings.telegram.channels.length} کانال متصل است.`
+                        : "ارسال تستی با Chat ID"}
                     </span>
                   </div>
                 </>

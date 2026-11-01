@@ -53,7 +53,7 @@ from .project_defaults import (
     remove_default_asset,
     save_defaults,
 )
-from .telegram import error_message, telegram
+from .telegram import CHAT_TARGET, error_message, telegram
 from .workers import ACTIVE_JOBS, worker
 
 password_hash = PasswordHash.recommended()
@@ -101,6 +101,8 @@ async def lifespan(app):
                 },
             )
     tasks = [
+        # Keep the bot online so /chatid replies work between sends.
+        asyncio.create_task(telegram.start()),
         asyncio.create_task(worker(("download", "youtube", "ingest"))),
         asyncio.create_task(worker(("render", "cover"))),
         asyncio.create_task(worker(("autosubtitle",))),
@@ -1287,17 +1289,33 @@ async def send_clip(ident: str, body: SendClip):
             409, "Wait for the cover to finish before sending this clip."
         )
     await telegram.check()
-    channels = await telegram.list_channels()
-    if not channels:
-        raise ValueError("Add a Telegram channel in Settings before posting.")
-    destination = body.destination or channels[0]["id"]
-    if not any(channel["id"] == destination for channel in channels):
-        raise ValueError("Choose a configured Telegram channel.")
+    chat_id = body.chat_id.strip()
+    if chat_id and not CHAT_TARGET.fullmatch(chat_id):
+        raise ValueError(
+            "Enter the numeric chat ID from the bot's /chatid command, or an @username."
+        )
+    if chat_id:
+        destination = chat_id
+    else:
+        channels = await telegram.list_channels()
+        if not channels:
+            raise ValueError(
+                "Add a Telegram channel in Settings, or turn off channel "
+                "delivery and enter a chat ID for a test send."
+            )
+        destination = body.destination or channels[0]["id"]
+        if not any(channel["id"] == destination for channel in channels):
+            raise ValueError("Choose a configured Telegram channel.")
     return {
         "job_id": s.job(
             "telegram",
             row["project_id"],
-            {"clip_id": ident, **body.model_dump(), "destination": destination},
+            {
+                "clip_id": ident,
+                **body.model_dump(),
+                "destination": destination,
+                "chat_id": chat_id,
+            },
         )
     }
 

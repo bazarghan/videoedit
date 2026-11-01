@@ -131,6 +131,8 @@ Add the bot to each target channel as an administrator with **Post messages** pe
 
 The bot token, API credentials, and cached bot session are encrypted with the installation's persistent key. Saved secrets are never returned to the browser. Posts are sent only from a rendered clip's **Post to Telegram** panel with a channel choice and video/file format. Telegram rate limits and upload failures are shown in Activity. Review Telegram before retrying an interrupted send: it may already have completed.
 
+For a test delivery, turn off **Send to channel** on the publish step and enter a numeric chat ID. To get that ID, send `/chatid` to the bot in a private chat, or send it in a group where the bot is a member; the bot replies with the marked chat ID (`-100…` for supergroups and channels). Test deliveries skip channel configuration and go straight to that chat, so the bot only needs permission to message it.
+
 The caption field uses the bundled Telegram HTML editor: bold, italic, underline, strike, spoiler, code, quotes, links, mentions, custom emoji, date/time, a live preview, and a 1,024-character counter. **Auto caption** sends the clip's English and Persian subtitle cues to the 9Router model using the system prompt saved in **Settings → Auto subtitles & captions**. The built-in prompt returns the title, release year, IMDb rating, and a Persian scene description; replace the prompt to control the exact caption format. The result opens in the caption editor for review before posting. Create auto subtitles or upload a subtitle track first if the clip has none.
 
 ## Operations
